@@ -1,14 +1,19 @@
 .venv/
+agents.md
 __pycache__/
 *.py[cod]
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+cache/
+*.egg-info/
 
 node_modules/
 .expo/
+.expo-shared/
 dist/
 build/
+coverage/
 
 .env
 .env.*

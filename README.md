@@ -10,4 +10,38 @@ FamilyKart AI will initially support English and Telugu, with future support pla
 
 This project is currently under development.
 
-More features and documentation will be added as the app is built phase by phase.
+Phase 1 builds the project foundation: backend health API, mobile welcome screen, local Docker services, and test tooling.
+
+## Quick Start
+
+PowerShell:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+cd backend
+pip install -e ".[dev]"
+pytest
+```
+
+Unix:
+
+```bash
+source .venv/bin/activate
+cd backend
+pip install -e ".[dev]"
+pytest
+```
+
+Docker:
+
+```bash
+docker compose up --build
+```
+
+Mobile:
+
+```bash
+cd mobile
+npm install
+npm start
+```

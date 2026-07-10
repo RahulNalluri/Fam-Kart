@@ -1,0 +1,1 @@
+"""FamilyKart AI backend package."""

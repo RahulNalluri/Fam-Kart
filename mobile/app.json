@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "name": "FamilyKart AI",
+    "slug": "familykart-ai",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "familykart",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "plugins": ["expo-router"],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
