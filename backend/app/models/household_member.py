@@ -40,7 +40,11 @@ class HouseholdMember(Base):
         index=True,
     )
     role: Mapped[HouseholdRole] = mapped_column(
-        Enum(HouseholdRole, name="household_role"),
+        Enum(
+            HouseholdRole,
+            name="household_role",
+            values_callable=lambda roles: [role.value for role in roles],
+        ),
         default=HouseholdRole.MEMBER,
         nullable=False,
     )
