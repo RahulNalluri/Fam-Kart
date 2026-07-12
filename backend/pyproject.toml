@@ -8,10 +8,13 @@ version = "0.1.0"
 description = "FastAPI backend for FamilyKart AI."
 requires-python = ">=3.12"
 dependencies = [
+    "alembic>=1.16.0",
     "fastapi>=0.116.0",
+    "psycopg[binary]>=3.2.0",
     "uvicorn[standard]>=0.35.0",
     "pydantic>=2.11.0",
     "pydantic-settings>=2.10.0",
+    "sqlalchemy>=2.0.0",
     "structlog>=25.4.0",
 ]
 

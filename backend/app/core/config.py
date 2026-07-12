@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     environment: Environment = "development"
     debug: bool = True
     cors_origins: list[str] = Field(default_factory=lambda: ["*"])
+    database_url: str = (
+        "postgresql+psycopg://familykart:familykart@localhost:5432/familykart"
+    )
 
 
 @lru_cache
