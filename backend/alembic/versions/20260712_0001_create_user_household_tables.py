@@ -8,6 +8,7 @@ Create Date: 2026-07-12
 from collections.abc import Sequence
 
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
@@ -18,7 +19,12 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    household_role = sa.Enum("owner", "member", name="household_role")
+    household_role = postgresql.ENUM(
+        "owner",
+        "member",
+        name="household_role",
+        create_type=False,
+    )
     household_role.create(op.get_bind(), checkfirst=True)
 
     op.create_table(
@@ -119,5 +125,10 @@ def downgrade() -> None:
     op.drop_index(op.f("ix_users_email"), table_name="users")
     op.drop_table("users")
 
-    household_role = sa.Enum("owner", "member", name="household_role")
+    household_role = postgresql.ENUM(
+        "owner",
+        "member",
+        name="household_role",
+        create_type=False,
+    )
     household_role.drop(op.get_bind(), checkfirst=True)
