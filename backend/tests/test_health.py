@@ -1,10 +1,12 @@
 import asyncio
 import json
-from collections.abc import Mapping
+from collections.abc import Generator, Mapping
 from typing import Any
 
+from sqlalchemy.exc import SQLAlchemyError
 from starlette.types import Message, Scope
 
+from app.db.session import get_db
 from app.main import app
 
 AsgiResponse = tuple[int, dict[str, str], dict[str, Any]]
@@ -91,4 +93,53 @@ def test_unknown_routes_return_standardized_errors() -> None:
     assert status_code == 404
     assert body["error"]["code"] == "http_404"
     assert body["error"]["message"] == "Not Found"
+    assert "request_id" in body["error"]
+
+
+class HealthyDatabase:
+    def execute(self, statement: object) -> "HealthyDatabase":
+        return self
+
+    def scalar_one(self) -> int:
+        return 1
+
+
+class UnavailableDatabase:
+    def execute(self, statement: object) -> None:
+        raise SQLAlchemyError("database unavailable")
+
+
+def override_database(db: object) -> Any:
+    def _override() -> Generator[object, None, None]:
+        yield db
+
+    return _override
+
+
+def test_database_health_returns_http_200_when_database_is_reachable() -> None:
+    app.dependency_overrides[get_db] = override_database(HealthyDatabase())
+
+    try:
+        status_code, _, body = get("/api/v1/health/database")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert status_code == 200
+    assert body == {
+        "status": "healthy",
+        "database": "postgresql",
+    }
+
+
+def test_database_health_returns_standardized_error_when_database_fails() -> None:
+    app.dependency_overrides[get_db] = override_database(UnavailableDatabase())
+
+    try:
+        status_code, _, body = get("/api/v1/health/database")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert status_code == 503
+    assert body["error"]["code"] == "http_503"
+    assert body["error"]["message"] == "Database is unavailable"
     assert "request_id" in body["error"]
