@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from app.core.config import Settings, settings
 
 password_hash = PasswordHash.recommended()
+UNUSABLE_PASSWORD_HASH = "!"
 
 
 class TokenType(StrEnum):

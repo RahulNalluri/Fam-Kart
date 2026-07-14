@@ -4,6 +4,7 @@ import pytest
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session
 
+from app.core.security import UNUSABLE_PASSWORD_HASH, verify_password
 from app.db.base import Base
 from app.db.seed import seed_development_data
 from app.models import Household, HouseholdMember, HouseholdRole, User
@@ -38,6 +39,8 @@ def test_seed_creates_development_data(db_session: Session) -> None:
     assert user is not None
     assert user.email == "demo@familykart.local"
     assert user.display_name == "Demo User"
+    assert user.password_hash == UNUSABLE_PASSWORD_HASH
+    assert verify_password("password", user.password_hash) is False
     assert user.preferred_language == "en"
 
     assert household is not None

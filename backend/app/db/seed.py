@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import Environment
+from app.core.security import UNUSABLE_PASSWORD_HASH
 from app.models import Household, HouseholdMember, HouseholdRole, User
 
 DEMO_USER_EMAIL = "demo@familykart.local"
@@ -39,6 +40,7 @@ def seed_development_data(
             user = User(
                 email=DEMO_USER_EMAIL,
                 display_name=DEMO_USER_NAME,
+                password_hash=UNUSABLE_PASSWORD_HASH,
                 preferred_language="en",
             )
             db.add(user)

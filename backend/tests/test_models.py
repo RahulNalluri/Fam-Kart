@@ -16,10 +16,14 @@ def test_user_table_columns() -> None:
     assert "id" in columns
     assert "email" in columns
     assert "display_name" in columns
+    assert "password_hash" in columns
     assert "preferred_language" in columns
     assert "is_active" in columns
     assert "created_at" in columns
     assert "updated_at" in columns
+
+    assert columns["password_hash"].nullable is False
+    assert columns["password_hash"].type.length == 255
 
 
 def test_household_table_columns() -> None:
