@@ -30,6 +30,8 @@ services:
   backend:
     build:
       context: ./backend
+    env_file:
+      - ./backend/.env
     environment:
       ENVIRONMENT: ${ENVIRONMENT:-development}
       DEBUG: "true"
