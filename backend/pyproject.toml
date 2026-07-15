@@ -9,6 +9,7 @@ description = "FastAPI backend for FamilyKart AI."
 requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.16.0",
+    "email-validator>=2.2.0,<3.0.0",
     "fastapi>=0.116.0",
     "psycopg[binary]>=3.2.0",
     "PyJWT>=2.13.0,<3.0.0",

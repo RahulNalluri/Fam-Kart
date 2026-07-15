@@ -12,6 +12,10 @@ This project is currently under development.
 
 Phase 1 builds the project foundation: backend health API, mobile welcome screen, local Docker services, and test tooling.
 
+The backend is under development. It currently provides health checks, database
+foundations, password security utilities, and user registration through
+`POST /api/v1/auth/register`.
+
 ## Quick Start
 
 PowerShell:
