@@ -1,5 +1,15 @@
 """Service layer package."""
 
-from app.services.auth import EmailAlreadyRegisteredError, register_user
+from app.services.auth import (
+    EmailAlreadyRegisteredError,
+    InvalidCredentialsError,
+    login_user,
+    register_user,
+)
 
-__all__ = ["EmailAlreadyRegisteredError", "register_user"]
+__all__ = [
+    "EmailAlreadyRegisteredError",
+    "InvalidCredentialsError",
+    "login_user",
+    "register_user",
+]

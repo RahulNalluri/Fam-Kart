@@ -25,6 +25,24 @@ class RegisterRequest(BaseModel):
         return normalized
 
 
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=1, max_length=128)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: EmailStr) -> str:
+        return str(value).lower()
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: Literal["bearer"] = "bearer"
+    access_token_expires_in: int = Field(gt=0)
+    refresh_token_expires_in: int = Field(gt=0)
+
+
 class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

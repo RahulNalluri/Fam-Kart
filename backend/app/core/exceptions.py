@@ -35,6 +35,7 @@ async def http_exception_handler(
     message = str(exc.detail) if exc.detail else "Request failed."
     return JSONResponse(
         status_code=exc.status_code,
+        headers=exc.headers,
         content=error_payload(
             code=f"http_{exc.status_code}",
             message=message,
