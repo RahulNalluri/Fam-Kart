@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.repositories.auth_sessions import AuthSessionRepository
 from app.repositories.users import UserRepository
 from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse, UserResponse
 from app.services.auth import (
@@ -22,7 +23,11 @@ def login(
     db: Annotated[Session, Depends(get_db)],
 ) -> TokenResponse:
     try:
-        return login_user(data, UserRepository(db))
+        return login_user(
+            data,
+            UserRepository(db),
+            AuthSessionRepository(db),
+        )
     except InvalidCredentialsError as error:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

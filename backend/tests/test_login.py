@@ -2,14 +2,15 @@ from collections.abc import Generator
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.core.security import TokenType, decode_token, hash_password
+from app.core.security import TokenType, decode_token, hash_password, hash_refresh_token
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
+from app.models.auth_session import AuthSession
 from app.models.user import User
 
 
@@ -84,6 +85,12 @@ def test_login_returns_access_and_refresh_tokens(
         ).subject
         == user.id
     )
+    auth_session = db_session.execute(select(AuthSession)).scalar_one()
+    assert auth_session.user_id == user.id
+    assert auth_session.refresh_token_hash == hash_refresh_token(body["refresh_token"])
+    assert auth_session.refresh_token_hash != body["refresh_token"]
+    assert auth_session.expires_at is not None
+    assert auth_session.revoked_at is None
     assert (
         decode_token(
             body["refresh_token"],
@@ -111,6 +118,8 @@ def test_login_rejects_invalid_credentials_consistently(
     assert response.headers["www-authenticate"] == "Bearer"
     assert response.json()["error"]["code"] == "http_401"
     assert response.json()["error"]["message"] == "Invalid email or password."
+    session_count = db_session.scalar(select(func.count()).select_from(AuthSession))
+    assert session_count == 0
 
 
 def test_login_rejects_invalid_request(client: TestClient) -> None:
@@ -121,3 +130,23 @@ def test_login_rejects_invalid_request(client: TestClient) -> None:
 
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "validation_error"
+
+
+def test_multiple_logins_create_separate_sessions(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    create_user(db_session)
+
+    first_response = client.post("/api/v1/auth/login", json=login_payload())
+    second_response = client.post("/api/v1/auth/login", json=login_payload())
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    assert (
+        first_response.json()["refresh_token"]
+        != second_response.json()["refresh_token"]
+    )
+    sessions = db_session.scalars(select(AuthSession)).all()
+    assert len(sessions) == 2
+    assert len({session.refresh_token_hash for session in sessions}) == 2

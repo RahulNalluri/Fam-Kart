@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
+from hashlib import sha256
 from uuid import UUID, uuid4
 
 import jwt
@@ -43,6 +44,10 @@ def verify_password(password: str, hashed_password: str) -> bool:
         return password_hash.verify(password, hashed_password)
     except UnknownHashError:
         return False
+
+
+def hash_refresh_token(token: str) -> str:
+    return sha256(token.encode("utf-8")).hexdigest()
 
 
 def create_access_token(
