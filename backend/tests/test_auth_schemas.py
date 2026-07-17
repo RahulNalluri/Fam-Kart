@@ -1,7 +1,12 @@
 import pytest
 from pydantic import ValidationError
 
-from app.schemas.auth import LoginRequest, RefreshTokenRequest, TokenResponse
+from app.schemas.auth import (
+    LoginRequest,
+    LogoutRequest,
+    RefreshTokenRequest,
+    TokenResponse,
+)
 
 
 def test_login_request_normalizes_email() -> None:
@@ -50,6 +55,15 @@ def test_refresh_token_request_requires_a_token() -> None:
 
     with pytest.raises(ValidationError):
         RefreshTokenRequest(refresh_token="")
+
+
+def test_logout_request_requires_a_token() -> None:
+    request = LogoutRequest(refresh_token="refresh-token")
+
+    assert request.refresh_token == "refresh-token"
+
+    with pytest.raises(ValidationError):
+        LogoutRequest(refresh_token="")
 
 
 @pytest.mark.parametrize(

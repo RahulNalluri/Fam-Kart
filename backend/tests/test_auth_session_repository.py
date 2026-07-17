@@ -73,6 +73,9 @@ def test_auth_session_repository_revoke() -> None:
         revoked = repository.revoke(auth_session, revoked_at=revoked_at)
 
         assert revoked.revoked_at == revoked_at
+
+        with pytest.raises(AuthSessionNotActiveError):
+            repository.revoke(auth_session, revoked_at=revoked_at)
     finally:
         db.close()
 

@@ -3,8 +3,10 @@
 from app.services.auth import (
     EmailAlreadyRegisteredError,
     InvalidCredentialsError,
+    InvalidLogoutTokenError,
     InvalidRefreshTokenError,
     login_user,
+    logout_user,
     refresh_tokens,
     register_user,
 )
@@ -12,8 +14,10 @@ from app.services.auth import (
 __all__ = [
     "EmailAlreadyRegisteredError",
     "InvalidCredentialsError",
+    "InvalidLogoutTokenError",
     "InvalidRefreshTokenError",
     "login_user",
+    "logout_user",
     "refresh_tokens",
     "register_user",
 ]

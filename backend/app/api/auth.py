@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -8,6 +8,7 @@ from app.repositories.auth_sessions import AuthSessionRepository
 from app.repositories.users import UserRepository
 from app.schemas.auth import (
     LoginRequest,
+    LogoutRequest,
     RefreshTokenRequest,
     RegisterRequest,
     TokenResponse,
@@ -16,13 +17,32 @@ from app.schemas.auth import (
 from app.services.auth import (
     EmailAlreadyRegisteredError,
     InvalidCredentialsError,
+    InvalidLogoutTokenError,
     InvalidRefreshTokenError,
     login_user,
+    logout_user,
     refresh_tokens,
     register_user,
 )
 
 router = APIRouter(prefix="/api/v1/auth", tags=["authentication"])
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+def logout(
+    data: LogoutRequest,
+    db: Annotated[Session, Depends(get_db)],
+) -> Response:
+    try:
+        logout_user(data, AuthSessionRepository(db))
+    except InvalidLogoutTokenError as error:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token.",
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from error
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/refresh", response_model=TokenResponse)

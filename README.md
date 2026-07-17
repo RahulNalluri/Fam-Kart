@@ -18,7 +18,7 @@ foundations, password security utilities, and user registration through
 access and refresh tokens through `POST /api/v1/auth/login`.
 Successful logins store a hashed authentication session in the database,
 and `POST /api/v1/auth/refresh` securely rotates refresh tokens while issuing a
-new access token. Logout remains under development.
+new access token. `POST /api/v1/auth/logout` revokes the current login session.
 
 ## Quick Start
 

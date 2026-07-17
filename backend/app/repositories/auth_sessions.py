@@ -43,7 +43,20 @@ class AuthSessionRepository:
         *,
         revoked_at: datetime | None = None,
     ) -> AuthSession:
-        auth_session.revoked_at = revoked_at or datetime.now(UTC)
+        effective_revoked_at = revoked_at or datetime.now(UTC)
+        result = self.db.execute(
+            update(AuthSession)
+            .where(
+                AuthSession.id == auth_session.id,
+                AuthSession.revoked_at.is_(None),
+            )
+            .values(revoked_at=effective_revoked_at),
+            execution_options={"synchronize_session": False},
+        )
+        if getattr(result, "rowcount", 0) != 1:
+            self.db.rollback()
+            raise AuthSessionNotActiveError
+
         self.db.commit()
         self.db.refresh(auth_session)
         return auth_session

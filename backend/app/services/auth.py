@@ -19,6 +19,7 @@ from app.repositories.auth_sessions import (
 from app.repositories.users import DuplicateUserEmailError, UserRepository
 from app.schemas.auth import (
     LoginRequest,
+    LogoutRequest,
     RefreshTokenRequest,
     RegisterRequest,
     TokenResponse,
@@ -36,6 +37,10 @@ class InvalidCredentialsError(ValueError):
 
 
 class InvalidRefreshTokenError(ValueError):
+    pass
+
+
+class InvalidLogoutTokenError(ValueError):
     pass
 
 
@@ -146,3 +151,38 @@ def refresh_tokens(
         access_token_expires_in=config.access_token_expire_minutes * 60,
         refresh_token_expires_in=config.refresh_token_expire_days * 24 * 60 * 60,
     )
+
+
+def logout_user(
+    data: LogoutRequest,
+    session_repository: AuthSessionRepository,
+    *,
+    config: Settings = settings,
+    now: datetime | None = None,
+) -> None:
+    revoked_at = now or datetime.now(UTC)
+    try:
+        payload = decode_token(
+            data.refresh_token,
+            expected_type=TokenType.REFRESH,
+            config=config,
+        )
+    except InvalidTokenError as error:
+        raise InvalidLogoutTokenError from error
+
+    auth_session = session_repository.get_by_refresh_token_hash(
+        hash_refresh_token(data.refresh_token),
+    )
+    if auth_session is None or auth_session.user_id != payload.subject:
+        raise InvalidLogoutTokenError
+
+    expires_at = auth_session.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=UTC)
+    if auth_session.revoked_at is not None or expires_at <= revoked_at:
+        raise InvalidLogoutTokenError
+
+    try:
+        session_repository.revoke(auth_session, revoked_at=revoked_at)
+    except AuthSessionNotActiveError as error:
+        raise InvalidLogoutTokenError from error
