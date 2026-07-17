@@ -19,6 +19,8 @@ access and refresh tokens through `POST /api/v1/auth/login`.
 Successful logins store a hashed authentication session in the database,
 and `POST /api/v1/auth/refresh` securely rotates refresh tokens while issuing a
 new access token. `POST /api/v1/auth/logout` revokes the current login session.
+Authenticated users can retrieve their personal profile through
+`GET /api/v1/users/me` with a Bearer access token.
 
 ## Quick Start
 
