@@ -29,6 +29,9 @@ Authenticated users can permanently delete their account through
 `DELETE /api/v1/users/me` after confirming their password. Household owners must
 transfer ownership before deletion.
 
+Authenticated users can create a household through `POST /api/v1/households`.
+The creator becomes the household owner automatically.
+
 ## Quick Start
 
 PowerShell:
