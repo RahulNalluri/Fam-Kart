@@ -22,6 +22,9 @@ new access token. `POST /api/v1/auth/logout` revokes the current login session.
 Authenticated users can retrieve their personal profile through
 `GET /api/v1/users/me` with a Bearer access token.
 
+Authenticated users can update their display name or preferred language through
+`PATCH /api/v1/users/me`. Email and password changes are handled separately.
+
 ## Quick Start
 
 PowerShell:
