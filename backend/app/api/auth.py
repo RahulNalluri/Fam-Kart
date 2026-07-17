@@ -6,15 +6,42 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.repositories.auth_sessions import AuthSessionRepository
 from app.repositories.users import UserRepository
-from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse, UserResponse
+from app.schemas.auth import (
+    LoginRequest,
+    RefreshTokenRequest,
+    RegisterRequest,
+    TokenResponse,
+    UserResponse,
+)
 from app.services.auth import (
     EmailAlreadyRegisteredError,
     InvalidCredentialsError,
+    InvalidRefreshTokenError,
     login_user,
+    refresh_tokens,
     register_user,
 )
 
 router = APIRouter(prefix="/api/v1/auth", tags=["authentication"])
+
+
+@router.post("/refresh", response_model=TokenResponse)
+def refresh(
+    data: RefreshTokenRequest,
+    db: Annotated[Session, Depends(get_db)],
+) -> TokenResponse:
+    try:
+        return refresh_tokens(
+            data,
+            UserRepository(db),
+            AuthSessionRepository(db),
+        )
+    except InvalidRefreshTokenError as error:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token.",
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from error
 
 
 @router.post("/login", response_model=TokenResponse)

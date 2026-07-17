@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.models.auth_session import AuthSession
@@ -47,3 +47,39 @@ class AuthSessionRepository:
         self.db.commit()
         self.db.refresh(auth_session)
         return auth_session
+
+    def rotate(
+        self,
+        auth_session: AuthSession,
+        *,
+        new_refresh_token_hash: str,
+        new_expires_at: datetime,
+        rotated_at: datetime,
+    ) -> AuthSession:
+        result = self.db.execute(
+            update(AuthSession)
+            .where(
+                AuthSession.id == auth_session.id,
+                AuthSession.revoked_at.is_(None),
+                AuthSession.expires_at > rotated_at,
+            )
+            .values(revoked_at=rotated_at),
+            execution_options={"synchronize_session": False},
+        )
+        if getattr(result, "rowcount", 0) != 1:
+            self.db.rollback()
+            raise AuthSessionNotActiveError
+
+        replacement = AuthSession(
+            user_id=auth_session.user_id,
+            refresh_token_hash=new_refresh_token_hash,
+            expires_at=new_expires_at,
+        )
+        self.db.add(replacement)
+        self.db.commit()
+        self.db.refresh(replacement)
+        return replacement
+
+
+class AuthSessionNotActiveError(ValueError):
+    pass

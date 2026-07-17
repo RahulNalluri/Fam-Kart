@@ -1,13 +1,17 @@
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
+import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 from app.db.base import Base
 from app.models.user import User
-from app.repositories.auth_sessions import AuthSessionRepository
+from app.repositories.auth_sessions import (
+    AuthSessionNotActiveError,
+    AuthSessionRepository,
+)
 
 
 def create_test_session() -> Session:
@@ -69,5 +73,39 @@ def test_auth_session_repository_revoke() -> None:
         revoked = repository.revoke(auth_session, revoked_at=revoked_at)
 
         assert revoked.revoked_at == revoked_at
+    finally:
+        db.close()
+
+
+def test_auth_session_repository_rotates_only_once() -> None:
+    db = create_test_session()
+    try:
+        user = create_user(db)
+        repository = AuthSessionRepository(db)
+        now = datetime.now(UTC).replace(tzinfo=None)
+        auth_session = repository.create(
+            user_id=user.id,
+            refresh_token_hash="c" * 64,
+            expires_at=now + timedelta(days=30),
+        )
+
+        replacement = repository.rotate(
+            auth_session,
+            new_refresh_token_hash="d" * 64,
+            new_expires_at=now + timedelta(days=30),
+            rotated_at=now,
+        )
+
+        assert replacement.user_id == user.id
+        assert replacement.refresh_token_hash == "d" * 64
+        assert replacement.revoked_at is None
+
+        with pytest.raises(AuthSessionNotActiveError):
+            repository.rotate(
+                auth_session,
+                new_refresh_token_hash="e" * 64,
+                new_expires_at=now + timedelta(days=30),
+                rotated_at=now,
+            )
     finally:
         db.close()

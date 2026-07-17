@@ -17,7 +17,8 @@ foundations, password security utilities, and user registration through
 `POST /api/v1/auth/register`. Registered users can authenticate and receive
 access and refresh tokens through `POST /api/v1/auth/login`.
 Successful logins store a hashed authentication session in the database,
-providing the foundation required for future refresh-token rotation and logout.
+and `POST /api/v1/auth/refresh` securely rotates refresh tokens while issuing a
+new access token. Logout remains under development.
 
 ## Quick Start
 

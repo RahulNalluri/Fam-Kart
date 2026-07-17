@@ -1,5 +1,8 @@
+from datetime import UTC, datetime, timedelta
+
 from app.core.config import Settings, settings
 from app.core.security import (
+    InvalidTokenError,
     TokenType,
     create_access_token,
     create_refresh_token,
@@ -9,9 +12,17 @@ from app.core.security import (
     verify_password,
 )
 from app.models.user import User
-from app.repositories.auth_sessions import AuthSessionRepository
+from app.repositories.auth_sessions import (
+    AuthSessionNotActiveError,
+    AuthSessionRepository,
+)
 from app.repositories.users import DuplicateUserEmailError, UserRepository
-from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse
+from app.schemas.auth import (
+    LoginRequest,
+    RefreshTokenRequest,
+    RegisterRequest,
+    TokenResponse,
+)
 
 _DUMMY_PASSWORD_HASH = hash_password("familykart-dummy-password")
 
@@ -21,6 +32,10 @@ class EmailAlreadyRegisteredError(ValueError):
 
 
 class InvalidCredentialsError(ValueError):
+    pass
+
+
+class InvalidRefreshTokenError(ValueError):
     pass
 
 
@@ -69,6 +84,61 @@ def login_user(
         refresh_token_hash=hash_refresh_token(refresh_token),
         expires_at=refresh_payload.expires_at,
     )
+
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        access_token_expires_in=config.access_token_expire_minutes * 60,
+        refresh_token_expires_in=config.refresh_token_expire_days * 24 * 60 * 60,
+    )
+
+
+def refresh_tokens(
+    data: RefreshTokenRequest,
+    user_repository: UserRepository,
+    session_repository: AuthSessionRepository,
+    *,
+    config: Settings = settings,
+    now: datetime | None = None,
+) -> TokenResponse:
+    rotated_at = now or datetime.now(UTC)
+    try:
+        payload = decode_token(
+            data.refresh_token,
+            expected_type=TokenType.REFRESH,
+            config=config,
+        )
+    except InvalidTokenError as error:
+        raise InvalidRefreshTokenError from error
+
+    auth_session = session_repository.get_by_refresh_token_hash(
+        hash_refresh_token(data.refresh_token),
+    )
+    if auth_session is None or auth_session.user_id != payload.subject:
+        raise InvalidRefreshTokenError
+
+    expires_at = auth_session.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=UTC)
+    if auth_session.revoked_at is not None or expires_at <= rotated_at:
+        raise InvalidRefreshTokenError
+
+    user = user_repository.get_by_id(payload.subject)
+    if user is None or not user.is_active:
+        raise InvalidRefreshTokenError
+
+    access_token = create_access_token(user.id, config=config, now=rotated_at)
+    refresh_token = create_refresh_token(user.id, config=config, now=rotated_at)
+    try:
+        session_repository.rotate(
+            auth_session,
+            new_refresh_token_hash=hash_refresh_token(refresh_token),
+            new_expires_at=rotated_at
+            + timedelta(days=config.refresh_token_expire_days),
+            rotated_at=rotated_at,
+        )
+    except AuthSessionNotActiveError as error:
+        raise InvalidRefreshTokenError from error
 
     return TokenResponse(
         access_token=access_token,

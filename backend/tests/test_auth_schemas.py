@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.schemas.auth import LoginRequest, TokenResponse
+from app.schemas.auth import LoginRequest, RefreshTokenRequest, TokenResponse
 
 
 def test_login_request_normalizes_email() -> None:
@@ -41,6 +41,15 @@ def test_token_response_contains_both_token_lifetimes() -> None:
     assert response.token_type == "bearer"
     assert response.access_token_expires_in == 900
     assert response.refresh_token_expires_in == 2_592_000
+
+
+def test_refresh_token_request_requires_a_token() -> None:
+    request = RefreshTokenRequest(refresh_token="refresh-token")
+
+    assert request.refresh_token == "refresh-token"
+
+    with pytest.raises(ValidationError):
+        RefreshTokenRequest(refresh_token="")
 
 
 @pytest.mark.parametrize(

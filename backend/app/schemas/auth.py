@@ -35,6 +35,10 @@ class LoginRequest(BaseModel):
         return str(value).lower()
 
 
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str = Field(min_length=1)
+
+
 class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str
