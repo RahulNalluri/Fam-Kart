@@ -25,6 +25,10 @@ Authenticated users can retrieve their personal profile through
 Authenticated users can update their display name or preferred language through
 `PATCH /api/v1/users/me`. Email and password changes are handled separately.
 
+Authenticated users can permanently delete their account through
+`DELETE /api/v1/users/me` after confirming their password. Household owners must
+transfer ownership before deletion.
+
 ## Quick Start
 
 PowerShell:

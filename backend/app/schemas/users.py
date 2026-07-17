@@ -25,3 +25,9 @@ class UpdateUserProfileRequest(BaseModel):
         if self.display_name is None and self.preferred_language is None:
             raise ValueError("At least one profile field must be provided.")
         return self
+
+
+class DeleteUserAccountRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    password: str = Field(min_length=1, max_length=128)

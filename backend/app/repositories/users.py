@@ -37,3 +37,7 @@ class UserRepository:
         self.db.commit()
         self.db.refresh(user)
         return user
+
+    def delete(self, user: User) -> None:
+        self.db.delete(user)
+        self.db.commit()
