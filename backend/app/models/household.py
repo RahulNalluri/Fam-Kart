@@ -8,6 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 if TYPE_CHECKING:
+    from app.models.household_invitation import HouseholdInvitation
     from app.models.household_member import HouseholdMember
 
 
@@ -29,6 +30,10 @@ class Household(Base):
     )
 
     members: Mapped[list["HouseholdMember"]] = relationship(
+        back_populates="household",
+        cascade="all, delete-orphan",
+    )
+    invitations: Mapped[list["HouseholdInvitation"]] = relationship(
         back_populates="household",
         cascade="all, delete-orphan",
     )

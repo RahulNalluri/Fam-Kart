@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     jwt_audience: str = "familykart-mobile"
     access_token_expire_minutes: int = Field(default=15, gt=0)
     refresh_token_expire_days: int = Field(default=30, gt=0)
+    household_invitation_expire_hours: int = Field(default=24, gt=0, le=168)
 
 
 @lru_cache

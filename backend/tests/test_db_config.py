@@ -16,3 +16,9 @@ def test_database_url_can_be_overridden_from_environment(
     settings = Settings()
 
     assert settings.database_url == database_url
+
+
+def test_household_invitation_expiration_defaults_to_24_hours() -> None:
+    settings = Settings()
+
+    assert settings.household_invitation_expire_hours == 24

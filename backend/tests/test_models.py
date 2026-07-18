@@ -1,13 +1,24 @@
 from sqlalchemy.orm import RelationshipProperty
 
 from app.db.base import Base
-from app.models import AuthSession, Household, HouseholdMember, HouseholdRole, User
+from app.models import (
+    AuthSession,
+    Household,
+    HouseholdInvitation,
+    HouseholdMember,
+    HouseholdRole,
+    User,
+)
 
 
 def test_initial_model_tables_are_registered() -> None:
-    assert {"users", "households", "household_members", "auth_sessions"}.issubset(
-        Base.metadata.tables,
-    )
+    assert {
+        "users",
+        "households",
+        "household_members",
+        "household_invitations",
+        "auth_sessions",
+    }.issubset(Base.metadata.tables)
 
 
 def test_user_table_columns() -> None:
@@ -67,10 +78,32 @@ def test_auth_session_table_columns() -> None:
     assert columns["revoked_at"].nullable is True
 
 
+def test_household_invitation_table_columns() -> None:
+    columns = HouseholdInvitation.__table__.columns
+
+    assert "id" in columns
+    assert "household_id" in columns
+    assert "created_by_user_id" in columns
+    assert "code_hash" in columns
+    assert "expires_at" in columns
+    assert "used_at" in columns
+    assert "used_by_user_id" in columns
+    assert "revoked_at" in columns
+    assert "created_at" in columns
+
+    assert columns["code_hash"].nullable is False
+    assert columns["code_hash"].type.length == 64
+    assert columns["expires_at"].nullable is False
+    assert columns["used_at"].nullable is True
+    assert columns["revoked_at"].nullable is True
+
+
 def test_model_relationships_are_configured() -> None:
     assert isinstance(User.auth_sessions.property, RelationshipProperty)
     assert isinstance(AuthSession.user.property, RelationshipProperty)
     assert isinstance(User.household_memberships.property, RelationshipProperty)
     assert isinstance(Household.members.property, RelationshipProperty)
+    assert isinstance(Household.invitations.property, RelationshipProperty)
     assert isinstance(HouseholdMember.user.property, RelationshipProperty)
     assert isinstance(HouseholdMember.household.property, RelationshipProperty)
+    assert isinstance(HouseholdInvitation.household.property, RelationshipProperty)
