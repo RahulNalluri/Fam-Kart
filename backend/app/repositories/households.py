@@ -1,9 +1,19 @@
+from dataclasses import dataclass
+from datetime import datetime
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.household import Household
 from app.models.household_member import HouseholdMember, HouseholdRole
+
+
+@dataclass(frozen=True)
+class HouseholdMembershipRecord:
+    household: Household
+    role: HouseholdRole
+    joined_at: datetime
 
 
 class HouseholdRepository:
@@ -30,3 +40,27 @@ class HouseholdRepository:
 
         self.db.refresh(household)
         return household
+
+    def list_for_user(self, user_id: UUID) -> list[HouseholdMembershipRecord]:
+        statement = (
+            select(
+                Household,
+                HouseholdMember.role,
+                HouseholdMember.joined_at,
+            )
+            .join(
+                HouseholdMember,
+                HouseholdMember.household_id == Household.id,
+            )
+            .where(HouseholdMember.user_id == user_id)
+            .order_by(Household.name.asc(), Household.id.asc())
+        )
+        rows = self.db.execute(statement).all()
+        return [
+            HouseholdMembershipRecord(
+                household=household,
+                role=role,
+                joined_at=joined_at,
+            )
+            for household, role, joined_at in rows
+        ]

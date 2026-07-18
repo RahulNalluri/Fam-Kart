@@ -31,6 +31,8 @@ transfer ownership before deletion.
 
 Authenticated users can create a household through `POST /api/v1/households`.
 The creator becomes the household owner automatically.
+`GET /api/v1/households` returns only the households that the authenticated user
+belongs to, together with their role in each household.
 
 ## Quick Start
 

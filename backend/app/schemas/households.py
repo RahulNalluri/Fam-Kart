@@ -3,6 +3,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.models.household_member import HouseholdRole
+
 
 class CreateHouseholdRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -25,3 +27,8 @@ class HouseholdResponse(BaseModel):
     name: str
     created_at: datetime
     updated_at: datetime
+
+
+class HouseholdListItem(HouseholdResponse):
+    role: HouseholdRole
+    joined_at: datetime
