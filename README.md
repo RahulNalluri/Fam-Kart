@@ -35,7 +35,8 @@ The creator becomes the household owner automatically.
 belongs to, together with their role in each household.
 
 Household invitations use expiring, one-time codes. Only invitation hashes are
-stored in PostgreSQL; invitation creation and joining APIs are under development.
+stored in PostgreSQL. Household owners can create invitation codes through
+`POST /api/v1/households/{household_id}/invitations`; joining is under development.
 
 ## Quick Start
 

@@ -20,3 +20,15 @@ class HouseholdMemberRepository:
             .limit(1)
         )
         return self.db.execute(statement).scalar_one_or_none() is not None
+
+    def get_for_user_and_household(
+        self,
+        *,
+        user_id: UUID,
+        household_id: UUID,
+    ) -> HouseholdMember | None:
+        statement = select(HouseholdMember).where(
+            HouseholdMember.user_id == user_id,
+            HouseholdMember.household_id == household_id,
+        )
+        return self.db.execute(statement).scalar_one_or_none()

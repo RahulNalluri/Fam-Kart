@@ -32,3 +32,10 @@ class HouseholdResponse(BaseModel):
 class HouseholdListItem(HouseholdResponse):
     role: HouseholdRole
     joined_at: datetime
+
+
+class HouseholdInvitationResponse(BaseModel):
+    id: UUID
+    household_id: UUID
+    code: str
+    expires_at: datetime
