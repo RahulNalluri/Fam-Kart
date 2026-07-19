@@ -73,3 +73,7 @@ class HouseholdMemberRepository:
             )
             for user_id, display_name, preferred_language, role, joined_at in rows
         ]
+
+    def delete(self, membership: HouseholdMember) -> None:
+        self.db.delete(membership)
+        self.db.commit()

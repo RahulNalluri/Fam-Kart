@@ -38,6 +38,10 @@ class AlreadyHouseholdMemberError(ValueError):
     pass
 
 
+class HouseholdOwnerCannotLeaveError(ValueError):
+    pass
+
+
 def _household_membership_response(
     record: HouseholdMembershipRecord,
 ) -> HouseholdListItem:
@@ -105,6 +109,23 @@ def list_household_members(
         )
         for record in repository.list_for_household(household_id)
     ]
+
+
+def leave_household(
+    household_id: UUID,
+    user: User,
+    repository: HouseholdMemberRepository,
+) -> None:
+    membership = repository.get_for_user_and_household(
+        household_id=household_id,
+        user_id=user.id,
+    )
+    if membership is None:
+        raise HouseholdNotFoundError
+    if membership.role == HouseholdRole.OWNER:
+        raise HouseholdOwnerCannotLeaveError
+
+    repository.delete(membership)
 
 
 def create_household_invitation(

@@ -38,6 +38,9 @@ Household members can retrieve one membership-scoped household through
 They can also list that household's members through
 `GET /api/v1/households/{household_id}/members` without exposing private account
 or authentication fields.
+Regular members can leave through
+`DELETE /api/v1/households/{household_id}/members/me`. Owners must transfer
+ownership before leaving so a household cannot be left without an owner.
 
 Household invitations use expiring, one-time codes. Only invitation hashes are
 stored in PostgreSQL. Household owners can create invitation codes through

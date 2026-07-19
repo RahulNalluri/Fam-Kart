@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user
@@ -21,12 +21,14 @@ from app.schemas.households import (
 from app.services.households import (
     AlreadyHouseholdMemberError,
     HouseholdNotFoundError,
+    HouseholdOwnerCannotLeaveError,
     HouseholdOwnerRequiredError,
     InvalidHouseholdInvitationError,
     create_household,
     create_household_invitation,
     get_user_household,
     join_household,
+    leave_household,
     list_household_members,
     list_user_households,
 )
@@ -81,6 +83,35 @@ def list_current_household_members(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Household not found.",
         ) from error
+
+
+@router.delete(
+    "/{household_id}/members/me",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def leave_current_household(
+    household_id: UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> Response:
+    try:
+        leave_household(
+            household_id,
+            current_user,
+            HouseholdMemberRepository(db),
+        )
+    except HouseholdNotFoundError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Household not found.",
+        ) from error
+    except HouseholdOwnerCannotLeaveError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Transfer household ownership before leaving the household.",
+        ) from error
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("", response_model=HouseholdResponse, status_code=status.HTTP_201_CREATED)
