@@ -24,6 +24,7 @@ from app.services.households import (
     InvalidHouseholdInvitationError,
     create_household,
     create_household_invitation,
+    get_user_household,
     join_household,
     list_user_households,
 )
@@ -37,6 +38,25 @@ def list_current_user_households(
     db: Annotated[Session, Depends(get_db)],
 ) -> list[HouseholdListItem]:
     return list_user_households(current_user, HouseholdRepository(db))
+
+
+@router.get("/{household_id}", response_model=HouseholdListItem)
+def read_user_household(
+    household_id: UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> HouseholdListItem:
+    try:
+        return get_user_household(
+            household_id,
+            current_user,
+            HouseholdRepository(db),
+        )
+    except HouseholdNotFoundError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Household not found.",
+        ) from error
 
 
 @router.post("", response_model=HouseholdResponse, status_code=status.HTTP_201_CREATED)

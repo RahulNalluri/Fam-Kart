@@ -33,6 +33,8 @@ Authenticated users can create a household through `POST /api/v1/households`.
 The creator becomes the household owner automatically.
 `GET /api/v1/households` returns only the households that the authenticated user
 belongs to, together with their role in each household.
+Household members can retrieve one membership-scoped household through
+`GET /api/v1/households/{household_id}`; outsiders receive a not-found response.
 
 Household invitations use expiring, one-time codes. Only invitation hashes are
 stored in PostgreSQL. Household owners can create invitation codes through

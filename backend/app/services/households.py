@@ -12,7 +12,7 @@ from app.repositories.household_invitations import (
     HouseholdMembershipConflictError,
 )
 from app.repositories.household_members import HouseholdMemberRepository
-from app.repositories.households import HouseholdRepository
+from app.repositories.households import HouseholdMembershipRecord, HouseholdRepository
 from app.schemas.households import (
     CreateHouseholdRequest,
     HouseholdInvitationResponse,
@@ -37,6 +37,19 @@ class AlreadyHouseholdMemberError(ValueError):
     pass
 
 
+def _household_membership_response(
+    record: HouseholdMembershipRecord,
+) -> HouseholdListItem:
+    return HouseholdListItem(
+        id=record.household.id,
+        name=record.household.name,
+        created_at=record.household.created_at,
+        updated_at=record.household.updated_at,
+        role=record.role,
+        joined_at=record.joined_at,
+    )
+
+
 def create_household(
     data: CreateHouseholdRequest,
     owner: User,
@@ -50,16 +63,23 @@ def list_user_households(
     repository: HouseholdRepository,
 ) -> list[HouseholdListItem]:
     return [
-        HouseholdListItem(
-            id=record.household.id,
-            name=record.household.name,
-            created_at=record.household.created_at,
-            updated_at=record.household.updated_at,
-            role=record.role,
-            joined_at=record.joined_at,
-        )
+        _household_membership_response(record)
         for record in repository.list_for_user(user.id)
     ]
+
+
+def get_user_household(
+    household_id: UUID,
+    user: User,
+    repository: HouseholdRepository,
+) -> HouseholdListItem:
+    record = repository.get_for_user(
+        household_id=household_id,
+        user_id=user.id,
+    )
+    if record is None:
+        raise HouseholdNotFoundError
+    return _household_membership_response(record)
 
 
 def create_household_invitation(

@@ -64,3 +64,35 @@ class HouseholdRepository:
             )
             for household, role, joined_at in rows
         ]
+
+    def get_for_user(
+        self,
+        *,
+        household_id: UUID,
+        user_id: UUID,
+    ) -> HouseholdMembershipRecord | None:
+        statement = (
+            select(
+                Household,
+                HouseholdMember.role,
+                HouseholdMember.joined_at,
+            )
+            .join(
+                HouseholdMember,
+                HouseholdMember.household_id == Household.id,
+            )
+            .where(
+                Household.id == household_id,
+                HouseholdMember.user_id == user_id,
+            )
+        )
+        row = self.db.execute(statement).one_or_none()
+        if row is None:
+            return None
+
+        household, role, joined_at = row
+        return HouseholdMembershipRecord(
+            household=household,
+            role=role,
+            joined_at=joined_at,
+        )
