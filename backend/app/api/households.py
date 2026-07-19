@@ -14,6 +14,7 @@ from app.schemas.households import (
     CreateHouseholdRequest,
     HouseholdInvitationResponse,
     HouseholdListItem,
+    HouseholdMemberResponse,
     HouseholdResponse,
     JoinHouseholdRequest,
 )
@@ -26,6 +27,7 @@ from app.services.households import (
     create_household_invitation,
     get_user_household,
     join_household,
+    list_household_members,
     list_user_households,
 )
 
@@ -51,6 +53,28 @@ def read_user_household(
             household_id,
             current_user,
             HouseholdRepository(db),
+        )
+    except HouseholdNotFoundError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Household not found.",
+        ) from error
+
+
+@router.get(
+    "/{household_id}/members",
+    response_model=list[HouseholdMemberResponse],
+)
+def list_current_household_members(
+    household_id: UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> list[HouseholdMemberResponse]:
+    try:
+        return list_household_members(
+            household_id,
+            current_user,
+            HouseholdMemberRepository(db),
         )
     except HouseholdNotFoundError as error:
         raise HTTPException(

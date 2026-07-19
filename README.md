@@ -35,6 +35,9 @@ The creator becomes the household owner automatically.
 belongs to, together with their role in each household.
 Household members can retrieve one membership-scoped household through
 `GET /api/v1/households/{household_id}`; outsiders receive a not-found response.
+They can also list that household's members through
+`GET /api/v1/households/{household_id}/members` without exposing private account
+or authentication fields.
 
 Household invitations use expiring, one-time codes. Only invitation hashes are
 stored in PostgreSQL. Household owners can create invitation codes through

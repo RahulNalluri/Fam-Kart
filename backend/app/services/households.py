@@ -17,6 +17,7 @@ from app.schemas.households import (
     CreateHouseholdRequest,
     HouseholdInvitationResponse,
     HouseholdListItem,
+    HouseholdMemberResponse,
     JoinHouseholdRequest,
 )
 
@@ -80,6 +81,30 @@ def get_user_household(
     if record is None:
         raise HouseholdNotFoundError
     return _household_membership_response(record)
+
+
+def list_household_members(
+    household_id: UUID,
+    user: User,
+    repository: HouseholdMemberRepository,
+) -> list[HouseholdMemberResponse]:
+    membership = repository.get_for_user_and_household(
+        household_id=household_id,
+        user_id=user.id,
+    )
+    if membership is None:
+        raise HouseholdNotFoundError
+
+    return [
+        HouseholdMemberResponse(
+            user_id=record.user_id,
+            display_name=record.display_name,
+            preferred_language=record.preferred_language,
+            role=record.role,
+            joined_at=record.joined_at,
+        )
+        for record in repository.list_for_household(household_id)
+    ]
 
 
 def create_household_invitation(

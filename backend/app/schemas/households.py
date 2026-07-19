@@ -35,6 +35,14 @@ class HouseholdListItem(HouseholdResponse):
     joined_at: datetime
 
 
+class HouseholdMemberResponse(BaseModel):
+    user_id: UUID
+    display_name: str
+    preferred_language: str
+    role: HouseholdRole
+    joined_at: datetime
+
+
 class HouseholdInvitationResponse(BaseModel):
     id: UUID
     household_id: UUID
