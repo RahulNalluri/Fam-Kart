@@ -36,7 +36,8 @@ belongs to, together with their role in each household.
 
 Household invitations use expiring, one-time codes. Only invitation hashes are
 stored in PostgreSQL. Household owners can create invitation codes through
-`POST /api/v1/households/{household_id}/invitations`; joining is under development.
+`POST /api/v1/households/{household_id}/invitations`. Authenticated users can join
+as members through `POST /api/v1/households/join` with a valid invitation code.
 
 ## Quick Start
 

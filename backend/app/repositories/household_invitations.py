@@ -2,9 +2,11 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.household_invitation import HouseholdInvitation
+from app.models.household_member import HouseholdMember, HouseholdRole
 
 
 class HouseholdInvitationRepository:
@@ -101,6 +103,52 @@ class HouseholdInvitationRepository:
         self.db.refresh(invitation)
         return invitation
 
+    def consume_and_add_member(
+        self,
+        invitation: HouseholdInvitation,
+        *,
+        user_id: UUID,
+        used_at: datetime | None = None,
+    ) -> HouseholdMember:
+        effective_used_at = used_at or datetime.now(UTC)
+        result = self.db.execute(
+            update(HouseholdInvitation)
+            .where(
+                HouseholdInvitation.id == invitation.id,
+                HouseholdInvitation.expires_at > effective_used_at,
+                HouseholdInvitation.used_at.is_(None),
+                HouseholdInvitation.revoked_at.is_(None),
+            )
+            .values(
+                used_at=effective_used_at,
+                used_by_user_id=user_id,
+            ),
+            execution_options={"synchronize_session": False},
+        )
+        if getattr(result, "rowcount", 0) != 1:
+            self.db.rollback()
+            raise HouseholdInvitationNotActiveError
+
+        membership = HouseholdMember(
+            household_id=invitation.household_id,
+            user_id=user_id,
+            role=HouseholdRole.MEMBER,
+        )
+        self.db.add(membership)
+        try:
+            self.db.commit()
+        except IntegrityError as error:
+            self.db.rollback()
+            raise HouseholdMembershipConflictError from error
+
+        self.db.refresh(invitation)
+        self.db.refresh(membership)
+        return membership
+
 
 class HouseholdInvitationNotActiveError(ValueError):
+    pass
+
+
+class HouseholdMembershipConflictError(ValueError):
     pass

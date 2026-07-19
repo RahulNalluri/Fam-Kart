@@ -3,6 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.core.invitations import normalize_invitation_code
 from app.models.household_member import HouseholdRole
 
 
@@ -39,3 +40,20 @@ class HouseholdInvitationResponse(BaseModel):
     household_id: UUID
     code: str
     expires_at: datetime
+
+
+class JoinHouseholdRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    invitation_code: str = Field(
+        min_length=15,
+        max_length=15,
+        pattern=r"^FK-[A-HJ-NP-Z2-9]{12}$",
+    )
+
+    @field_validator("invitation_code", mode="before")
+    @classmethod
+    def normalize_code(cls, value: object) -> object:
+        if isinstance(value, str):
+            return normalize_invitation_code(value)
+        return value

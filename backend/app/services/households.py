@@ -6,13 +6,18 @@ from app.core.invitations import generate_invitation_code, hash_invitation_code
 from app.models.household import Household
 from app.models.household_member import HouseholdRole
 from app.models.user import User
-from app.repositories.household_invitations import HouseholdInvitationRepository
+from app.repositories.household_invitations import (
+    HouseholdInvitationNotActiveError,
+    HouseholdInvitationRepository,
+    HouseholdMembershipConflictError,
+)
 from app.repositories.household_members import HouseholdMemberRepository
 from app.repositories.households import HouseholdRepository
 from app.schemas.households import (
     CreateHouseholdRequest,
     HouseholdInvitationResponse,
     HouseholdListItem,
+    JoinHouseholdRequest,
 )
 
 
@@ -21,6 +26,14 @@ class HouseholdNotFoundError(ValueError):
 
 
 class HouseholdOwnerRequiredError(ValueError):
+    pass
+
+
+class InvalidHouseholdInvitationError(ValueError):
+    pass
+
+
+class AlreadyHouseholdMemberError(ValueError):
     pass
 
 
@@ -81,4 +94,49 @@ def create_household_invitation(
         household_id=invitation.household_id,
         code=code,
         expires_at=invitation.expires_at,
+    )
+
+
+def join_household(
+    data: JoinHouseholdRequest,
+    user: User,
+    member_repository: HouseholdMemberRepository,
+    invitation_repository: HouseholdInvitationRepository,
+    *,
+    now: datetime | None = None,
+) -> HouseholdListItem:
+    joined_at = now or datetime.now(UTC)
+    invitation = invitation_repository.get_active_by_code_hash(
+        hash_invitation_code(data.invitation_code),
+        now=joined_at,
+    )
+    if invitation is None:
+        raise InvalidHouseholdInvitationError
+
+    existing_membership = member_repository.get_for_user_and_household(
+        user_id=user.id,
+        household_id=invitation.household_id,
+    )
+    if existing_membership is not None:
+        raise AlreadyHouseholdMemberError
+
+    try:
+        membership = invitation_repository.consume_and_add_member(
+            invitation,
+            user_id=user.id,
+            used_at=joined_at,
+        )
+    except HouseholdInvitationNotActiveError as error:
+        raise InvalidHouseholdInvitationError from error
+    except HouseholdMembershipConflictError as error:
+        raise AlreadyHouseholdMemberError from error
+
+    household = invitation.household
+    return HouseholdListItem(
+        id=household.id,
+        name=household.name,
+        created_at=household.created_at,
+        updated_at=household.updated_at,
+        role=membership.role,
+        joined_at=membership.joined_at,
     )

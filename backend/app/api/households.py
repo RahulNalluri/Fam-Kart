@@ -15,12 +15,16 @@ from app.schemas.households import (
     HouseholdInvitationResponse,
     HouseholdListItem,
     HouseholdResponse,
+    JoinHouseholdRequest,
 )
 from app.services.households import (
+    AlreadyHouseholdMemberError,
     HouseholdNotFoundError,
     HouseholdOwnerRequiredError,
+    InvalidHouseholdInvitationError,
     create_household,
     create_household_invitation,
+    join_household,
     list_user_households,
 )
 
@@ -43,6 +47,35 @@ def create_user_household(
 ) -> HouseholdResponse:
     household = create_household(data, current_user, HouseholdRepository(db))
     return HouseholdResponse.model_validate(household)
+
+
+@router.post(
+    "/join",
+    response_model=HouseholdListItem,
+    status_code=status.HTTP_201_CREATED,
+)
+def join_user_household(
+    data: JoinHouseholdRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> HouseholdListItem:
+    try:
+        return join_household(
+            data,
+            current_user,
+            HouseholdMemberRepository(db),
+            HouseholdInvitationRepository(db),
+        )
+    except InvalidHouseholdInvitationError as error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invitation code is invalid or unavailable.",
+        ) from error
+    except AlreadyHouseholdMemberError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="You are already a member of this household.",
+        ) from error
 
 
 @router.post(
