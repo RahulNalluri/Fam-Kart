@@ -233,14 +233,13 @@ def create_household_invitation(
     config: Settings = settings,
     now: datetime | None = None,
 ) -> HouseholdInvitationResponse:
-    membership = member_repository.get_for_user_and_household(
-        user_id=creator.id,
+    memberships = member_repository.lock_for_users(
         household_id=household_id,
+        user_ids={creator.id},
     )
+    membership = memberships.get(creator.id)
     if membership is None:
         raise HouseholdNotFoundError
-    if membership.role != HouseholdRole.OWNER:
-        raise HouseholdOwnerRequiredError
 
     created_at = now or datetime.now(UTC)
     code = generate_invitation_code()

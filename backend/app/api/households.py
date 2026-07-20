@@ -298,11 +298,6 @@ def create_user_household_invitation(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Household not found.",
         ) from error
-    except HouseholdOwnerRequiredError as error:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only household owners can create invitations.",
-        ) from error
 
 
 @router.get(

@@ -154,7 +154,7 @@ def test_owner_can_create_distinct_one_time_invitations(
     assert invitations[0].code_hash != invitations[1].code_hash
 
 
-def test_regular_member_cannot_create_invitation(
+def test_regular_member_can_create_invitation(
     client: TestClient,
     db_session: Session,
 ) -> None:
@@ -170,11 +170,12 @@ def test_regular_member_cannot_create_invitation(
         headers=authorization_header(member),
     )
 
-    assert response.status_code == 403
-    assert response.json()["error"]["message"] == (
-        "Only household owners can create invitations."
-    )
-    assert db_session.scalar(select(HouseholdInvitation)) is None
+    assert response.status_code == 201
+    invitation = db_session.scalar(select(HouseholdInvitation))
+    assert invitation is not None
+    assert invitation.household_id == household.id
+    assert invitation.created_by_user_id == member.id
+    assert invitation.code_hash == hash_invitation_code(response.json()["code"])
 
 
 def test_outsider_cannot_discover_or_invite_to_household(
