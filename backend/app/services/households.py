@@ -16,6 +16,7 @@ from app.repositories.households import HouseholdMembershipRecord, HouseholdRepo
 from app.schemas.households import (
     CreateHouseholdRequest,
     HouseholdInvitationResponse,
+    HouseholdInvitationSummary,
     HouseholdListItem,
     HouseholdMemberResponse,
     JoinHouseholdRequest,
@@ -53,6 +54,10 @@ class HouseholdOwnershipTransferConflictError(ValueError):
 
 
 class HouseholdOwnerCannotBeRemovedError(ValueError):
+    pass
+
+
+class HouseholdInvitationNotFoundError(ValueError):
     pass
 
 
@@ -252,6 +257,63 @@ def create_household_invitation(
         code=code,
         expires_at=invitation.expires_at,
     )
+
+
+def list_household_invitations(
+    household_id: UUID,
+    user: User,
+    member_repository: HouseholdMemberRepository,
+    invitation_repository: HouseholdInvitationRepository,
+    *,
+    now: datetime | None = None,
+) -> list[HouseholdInvitationSummary]:
+    membership = member_repository.get_for_user_and_household(
+        user_id=user.id,
+        household_id=household_id,
+    )
+    if membership is None:
+        raise HouseholdNotFoundError
+    if membership.role != HouseholdRole.OWNER:
+        raise HouseholdOwnerRequiredError
+
+    return [
+        HouseholdInvitationSummary.model_validate(invitation)
+        for invitation in invitation_repository.list_active_for_household(
+            household_id,
+            now=now,
+        )
+    ]
+
+
+def revoke_household_invitation(
+    household_id: UUID,
+    invitation_id: UUID,
+    user: User,
+    member_repository: HouseholdMemberRepository,
+    invitation_repository: HouseholdInvitationRepository,
+    *,
+    now: datetime | None = None,
+) -> None:
+    memberships = member_repository.lock_for_users(
+        household_id=household_id,
+        user_ids={user.id},
+    )
+    membership = memberships.get(user.id)
+    if membership is None:
+        raise HouseholdNotFoundError
+    if membership.role != HouseholdRole.OWNER:
+        raise HouseholdOwnerRequiredError
+
+    invitation = invitation_repository.get_for_household(
+        invitation_id=invitation_id,
+        household_id=household_id,
+    )
+    if invitation is None:
+        raise HouseholdInvitationNotFoundError
+    try:
+        invitation_repository.revoke(invitation, revoked_at=now)
+    except HouseholdInvitationNotActiveError as error:
+        raise HouseholdInvitationNotFoundError from error
 
 
 def join_household(

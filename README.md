@@ -55,6 +55,10 @@ Household invitations use expiring, one-time codes. Only invitation hashes are
 stored in PostgreSQL. Household owners can create invitation codes through
 `POST /api/v1/households/{household_id}/invitations`. Authenticated users can join
 as members through `POST /api/v1/households/join` with a valid invitation code.
+Owners can list usable invitation metadata through
+`GET /api/v1/households/{household_id}/invitations` and revoke an unused code
+through `DELETE /api/v1/households/{household_id}/invitations/{invitation_id}`.
+Listing never exposes plaintext codes or stored code hashes.
 
 ## Quick Start
 

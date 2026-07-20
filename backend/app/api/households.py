@@ -13,6 +13,7 @@ from app.repositories.households import HouseholdRepository
 from app.schemas.households import (
     CreateHouseholdRequest,
     HouseholdInvitationResponse,
+    HouseholdInvitationSummary,
     HouseholdListItem,
     HouseholdMemberResponse,
     HouseholdResponse,
@@ -22,6 +23,7 @@ from app.schemas.households import (
 )
 from app.services.households import (
     AlreadyHouseholdMemberError,
+    HouseholdInvitationNotFoundError,
     HouseholdMemberNotFoundError,
     HouseholdNotFoundError,
     HouseholdOwnerCannotBeRemovedError,
@@ -34,9 +36,11 @@ from app.services.households import (
     get_user_household,
     join_household,
     leave_household,
+    list_household_invitations,
     list_household_members,
     list_user_households,
     remove_household_member,
+    revoke_household_invitation,
     transfer_household_ownership,
     update_household,
 )
@@ -299,3 +303,68 @@ def create_user_household_invitation(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only household owners can create invitations.",
         ) from error
+
+
+@router.get(
+    "/{household_id}/invitations",
+    response_model=list[HouseholdInvitationSummary],
+)
+def list_current_household_invitations(
+    household_id: UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> list[HouseholdInvitationSummary]:
+    try:
+        return list_household_invitations(
+            household_id,
+            current_user,
+            HouseholdMemberRepository(db),
+            HouseholdInvitationRepository(db),
+        )
+    except HouseholdNotFoundError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Household not found.",
+        ) from error
+    except HouseholdOwnerRequiredError as error:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only household owners can view invitations.",
+        ) from error
+
+
+@router.delete(
+    "/{household_id}/invitations/{invitation_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def revoke_current_household_invitation(
+    household_id: UUID,
+    invitation_id: UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> Response:
+    try:
+        revoke_household_invitation(
+            household_id,
+            invitation_id,
+            current_user,
+            HouseholdMemberRepository(db),
+            HouseholdInvitationRepository(db),
+        )
+    except HouseholdNotFoundError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Household not found.",
+        ) from error
+    except HouseholdOwnerRequiredError as error:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only household owners can revoke invitations.",
+        ) from error
+    except HouseholdInvitationNotFoundError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Active invitation not found.",
+        ) from error
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

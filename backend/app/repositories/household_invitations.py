@@ -47,6 +47,40 @@ class HouseholdInvitationRepository:
         )
         return self.db.execute(statement).scalar_one_or_none()
 
+    def list_active_for_household(
+        self,
+        household_id: UUID,
+        *,
+        now: datetime | None = None,
+    ) -> list[HouseholdInvitation]:
+        effective_now = now or datetime.now(UTC)
+        statement = (
+            select(HouseholdInvitation)
+            .where(
+                HouseholdInvitation.household_id == household_id,
+                HouseholdInvitation.expires_at > effective_now,
+                HouseholdInvitation.used_at.is_(None),
+                HouseholdInvitation.revoked_at.is_(None),
+            )
+            .order_by(
+                HouseholdInvitation.expires_at.asc(),
+                HouseholdInvitation.id.asc(),
+            )
+        )
+        return list(self.db.execute(statement).scalars().all())
+
+    def get_for_household(
+        self,
+        *,
+        invitation_id: UUID,
+        household_id: UUID,
+    ) -> HouseholdInvitation | None:
+        statement = select(HouseholdInvitation).where(
+            HouseholdInvitation.id == invitation_id,
+            HouseholdInvitation.household_id == household_id,
+        )
+        return self.db.execute(statement).scalar_one_or_none()
+
     def mark_used(
         self,
         invitation: HouseholdInvitation,

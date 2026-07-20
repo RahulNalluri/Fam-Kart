@@ -70,6 +70,16 @@ class HouseholdInvitationResponse(BaseModel):
     expires_at: datetime
 
 
+class HouseholdInvitationSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    household_id: UUID
+    created_by_user_id: UUID
+    created_at: datetime
+    expires_at: datetime
+
+
 class JoinHouseholdRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
