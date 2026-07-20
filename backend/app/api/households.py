@@ -18,6 +18,7 @@ from app.schemas.households import (
     HouseholdResponse,
     JoinHouseholdRequest,
     TransferHouseholdOwnershipRequest,
+    UpdateHouseholdRequest,
 )
 from app.services.households import (
     AlreadyHouseholdMemberError,
@@ -37,6 +38,7 @@ from app.services.households import (
     list_user_households,
     remove_household_member,
     transfer_household_ownership,
+    update_household,
 )
 
 router = APIRouter(prefix="/api/v1/households", tags=["households"])
@@ -67,6 +69,35 @@ def read_user_household(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Household not found.",
         ) from error
+
+
+@router.patch("/{household_id}", response_model=HouseholdResponse)
+def update_current_household(
+    household_id: UUID,
+    data: UpdateHouseholdRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> HouseholdResponse:
+    try:
+        household = update_household(
+            household_id,
+            data,
+            current_user,
+            HouseholdRepository(db),
+            HouseholdMemberRepository(db),
+        )
+    except HouseholdNotFoundError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Household not found.",
+        ) from error
+    except HouseholdOwnerRequiredError as error:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only household owners can rename the household.",
+        ) from error
+
+    return HouseholdResponse.model_validate(household)
 
 
 @router.get(

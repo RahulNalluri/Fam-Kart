@@ -20,6 +20,7 @@ from app.schemas.households import (
     HouseholdMemberResponse,
     JoinHouseholdRequest,
     TransferHouseholdOwnershipRequest,
+    UpdateHouseholdRequest,
 )
 
 
@@ -98,6 +99,30 @@ def get_user_household(
     if record is None:
         raise HouseholdNotFoundError
     return _household_membership_response(record)
+
+
+def update_household(
+    household_id: UUID,
+    data: UpdateHouseholdRequest,
+    user: User,
+    household_repository: HouseholdRepository,
+    member_repository: HouseholdMemberRepository,
+) -> Household:
+    memberships = member_repository.lock_for_users(
+        household_id=household_id,
+        user_ids={user.id},
+    )
+    membership = memberships.get(user.id)
+    if membership is None:
+        raise HouseholdNotFoundError
+    if membership.role != HouseholdRole.OWNER:
+        raise HouseholdOwnerRequiredError
+
+    household = household_repository.get_by_id(household_id)
+    if household is None:
+        raise HouseholdNotFoundError
+    household.name = data.name
+    return household_repository.update(household)
 
 
 def list_household_members(

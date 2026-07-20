@@ -41,6 +41,19 @@ class HouseholdRepository:
         self.db.refresh(household)
         return household
 
+    def get_by_id(self, household_id: UUID) -> Household | None:
+        return self.db.get(Household, household_id)
+
+    def update(self, household: Household) -> Household:
+        try:
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
+
+        self.db.refresh(household)
+        return household
+
     def list_for_user(self, user_id: UUID) -> list[HouseholdMembershipRecord]:
         statement = (
             select(

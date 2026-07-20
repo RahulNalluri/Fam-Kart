@@ -47,6 +47,9 @@ the household as a regular member.
 Household owners can remove regular members through
 `DELETE /api/v1/households/{household_id}/members/{member_user_id}`. Removing a
 membership does not delete that user's account.
+Household owners can rename their household through
+`PATCH /api/v1/households/{household_id}`. Names are trimmed and validated before
+the existing household is updated.
 
 Household invitations use expiring, one-time codes. Only invitation hashes are
 stored in PostgreSQL. Household owners can create invitation codes through
