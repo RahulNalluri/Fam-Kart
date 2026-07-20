@@ -77,3 +77,44 @@ class HouseholdMemberRepository:
     def delete(self, membership: HouseholdMember) -> None:
         self.db.delete(membership)
         self.db.commit()
+
+    def lock_for_ownership_transfer(
+        self,
+        *,
+        household_id: UUID,
+        current_owner_user_id: UUID,
+        new_owner_user_id: UUID,
+    ) -> tuple[HouseholdMember | None, HouseholdMember | None]:
+        statement = (
+            select(HouseholdMember)
+            .where(
+                HouseholdMember.household_id == household_id,
+                HouseholdMember.user_id.in_(
+                    [current_owner_user_id, new_owner_user_id],
+                ),
+            )
+            .order_by(HouseholdMember.user_id.asc())
+            .with_for_update()
+        )
+        memberships = self.db.execute(statement).scalars().all()
+        memberships_by_user_id = {
+            membership.user_id: membership for membership in memberships
+        }
+        return (
+            memberships_by_user_id.get(current_owner_user_id),
+            memberships_by_user_id.get(new_owner_user_id),
+        )
+
+    def transfer_ownership(
+        self,
+        *,
+        current_owner: HouseholdMember,
+        new_owner: HouseholdMember,
+    ) -> None:
+        current_owner.role = HouseholdRole.MEMBER
+        new_owner.role = HouseholdRole.OWNER
+        try:
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise

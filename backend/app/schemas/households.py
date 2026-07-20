@@ -43,6 +43,12 @@ class HouseholdMemberResponse(BaseModel):
     joined_at: datetime
 
 
+class TransferHouseholdOwnershipRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    new_owner_user_id: UUID
+
+
 class HouseholdInvitationResponse(BaseModel):
     id: UUID
     household_id: UUID

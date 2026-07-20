@@ -17,12 +17,15 @@ from app.schemas.households import (
     HouseholdMemberResponse,
     HouseholdResponse,
     JoinHouseholdRequest,
+    TransferHouseholdOwnershipRequest,
 )
 from app.services.households import (
     AlreadyHouseholdMemberError,
+    HouseholdMemberNotFoundError,
     HouseholdNotFoundError,
     HouseholdOwnerCannotLeaveError,
     HouseholdOwnerRequiredError,
+    HouseholdOwnershipTransferConflictError,
     InvalidHouseholdInvitationError,
     create_household,
     create_household_invitation,
@@ -31,6 +34,7 @@ from app.services.households import (
     leave_household,
     list_household_members,
     list_user_households,
+    transfer_household_ownership,
 )
 
 router = APIRouter(prefix="/api/v1/households", tags=["households"])
@@ -109,6 +113,47 @@ def leave_current_household(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Transfer household ownership before leaving the household.",
+        ) from error
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.patch(
+    "/{household_id}/owner",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def transfer_current_household_ownership(
+    household_id: UUID,
+    data: TransferHouseholdOwnershipRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> Response:
+    try:
+        transfer_household_ownership(
+            household_id,
+            data,
+            current_user,
+            HouseholdMemberRepository(db),
+        )
+    except HouseholdNotFoundError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Household not found.",
+        ) from error
+    except HouseholdOwnerRequiredError as error:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only household owners can transfer ownership.",
+        ) from error
+    except HouseholdMemberNotFoundError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Household member not found.",
+        ) from error
+    except HouseholdOwnershipTransferConflictError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Choose another household member as the new owner.",
         ) from error
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)

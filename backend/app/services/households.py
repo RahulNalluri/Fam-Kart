@@ -19,6 +19,7 @@ from app.schemas.households import (
     HouseholdListItem,
     HouseholdMemberResponse,
     JoinHouseholdRequest,
+    TransferHouseholdOwnershipRequest,
 )
 
 
@@ -39,6 +40,14 @@ class AlreadyHouseholdMemberError(ValueError):
 
 
 class HouseholdOwnerCannotLeaveError(ValueError):
+    pass
+
+
+class HouseholdMemberNotFoundError(ValueError):
+    pass
+
+
+class HouseholdOwnershipTransferConflictError(ValueError):
     pass
 
 
@@ -126,6 +135,34 @@ def leave_household(
         raise HouseholdOwnerCannotLeaveError
 
     repository.delete(membership)
+
+
+def transfer_household_ownership(
+    household_id: UUID,
+    data: TransferHouseholdOwnershipRequest,
+    user: User,
+    repository: HouseholdMemberRepository,
+) -> None:
+    current_owner, new_owner = repository.lock_for_ownership_transfer(
+        household_id=household_id,
+        current_owner_user_id=user.id,
+        new_owner_user_id=data.new_owner_user_id,
+    )
+    if current_owner is None:
+        raise HouseholdNotFoundError
+    if current_owner.role != HouseholdRole.OWNER:
+        raise HouseholdOwnerRequiredError
+    if data.new_owner_user_id == user.id:
+        raise HouseholdOwnershipTransferConflictError
+    if new_owner is None:
+        raise HouseholdMemberNotFoundError
+    if new_owner.role != HouseholdRole.MEMBER:
+        raise HouseholdOwnershipTransferConflictError
+
+    repository.transfer_ownership(
+        current_owner=current_owner,
+        new_owner=new_owner,
+    )
 
 
 def create_household_invitation(
