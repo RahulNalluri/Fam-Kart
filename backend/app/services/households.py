@@ -51,6 +51,10 @@ class HouseholdOwnershipTransferConflictError(ValueError):
     pass
 
 
+class HouseholdOwnerCannotBeRemovedError(ValueError):
+    pass
+
+
 def _household_membership_response(
     record: HouseholdMembershipRecord,
 ) -> HouseholdListItem:
@@ -143,11 +147,12 @@ def transfer_household_ownership(
     user: User,
     repository: HouseholdMemberRepository,
 ) -> None:
-    current_owner, new_owner = repository.lock_for_ownership_transfer(
+    memberships = repository.lock_for_users(
         household_id=household_id,
-        current_owner_user_id=user.id,
-        new_owner_user_id=data.new_owner_user_id,
+        user_ids={user.id, data.new_owner_user_id},
     )
+    current_owner = memberships.get(user.id)
+    new_owner = memberships.get(data.new_owner_user_id)
     if current_owner is None:
         raise HouseholdNotFoundError
     if current_owner.role != HouseholdRole.OWNER:
@@ -163,6 +168,30 @@ def transfer_household_ownership(
         current_owner=current_owner,
         new_owner=new_owner,
     )
+
+
+def remove_household_member(
+    household_id: UUID,
+    member_user_id: UUID,
+    user: User,
+    repository: HouseholdMemberRepository,
+) -> None:
+    memberships = repository.lock_for_users(
+        household_id=household_id,
+        user_ids={user.id, member_user_id},
+    )
+    owner_membership = memberships.get(user.id)
+    member_to_remove = memberships.get(member_user_id)
+    if owner_membership is None:
+        raise HouseholdNotFoundError
+    if owner_membership.role != HouseholdRole.OWNER:
+        raise HouseholdOwnerRequiredError
+    if member_to_remove is None:
+        raise HouseholdMemberNotFoundError
+    if member_to_remove.role == HouseholdRole.OWNER:
+        raise HouseholdOwnerCannotBeRemovedError
+
+    repository.delete(member_to_remove)
 
 
 def create_household_invitation(

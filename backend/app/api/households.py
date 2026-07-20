@@ -23,6 +23,7 @@ from app.services.households import (
     AlreadyHouseholdMemberError,
     HouseholdMemberNotFoundError,
     HouseholdNotFoundError,
+    HouseholdOwnerCannotBeRemovedError,
     HouseholdOwnerCannotLeaveError,
     HouseholdOwnerRequiredError,
     HouseholdOwnershipTransferConflictError,
@@ -34,6 +35,7 @@ from app.services.households import (
     leave_household,
     list_household_members,
     list_user_households,
+    remove_household_member,
     transfer_household_ownership,
 )
 
@@ -113,6 +115,47 @@ def leave_current_household(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Transfer household ownership before leaving the household.",
+        ) from error
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete(
+    "/{household_id}/members/{member_user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def remove_current_household_member(
+    household_id: UUID,
+    member_user_id: UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> Response:
+    try:
+        remove_household_member(
+            household_id,
+            member_user_id,
+            current_user,
+            HouseholdMemberRepository(db),
+        )
+    except HouseholdNotFoundError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Household not found.",
+        ) from error
+    except HouseholdOwnerRequiredError as error:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only household owners can remove members.",
+        ) from error
+    except HouseholdMemberNotFoundError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Household member not found.",
+        ) from error
+    except HouseholdOwnerCannotBeRemovedError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Transfer ownership before removing the household owner.",
         ) from error
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)

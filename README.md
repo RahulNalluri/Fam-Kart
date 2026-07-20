@@ -44,6 +44,9 @@ ownership before leaving so a household cannot be left without an owner.
 An owner can atomically transfer ownership to an existing member through
 `PATCH /api/v1/households/{household_id}/owner`. The previous owner remains in
 the household as a regular member.
+Household owners can remove regular members through
+`DELETE /api/v1/households/{household_id}/members/{member_user_id}`. Removing a
+membership does not delete that user's account.
 
 Household invitations use expiring, one-time codes. Only invitation hashes are
 stored in PostgreSQL. Household owners can create invitation codes through
