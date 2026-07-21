@@ -10,6 +10,7 @@ from app.db.base import Base
 if TYPE_CHECKING:
     from app.models.household_invitation import HouseholdInvitation
     from app.models.household_member import HouseholdMember
+    from app.models.shopping_session import ShoppingSession
 
 
 class Household(Base):
@@ -34,6 +35,10 @@ class Household(Base):
         cascade="all, delete-orphan",
     )
     invitations: Mapped[list["HouseholdInvitation"]] = relationship(
+        back_populates="household",
+        cascade="all, delete-orphan",
+    )
+    shopping_sessions: Mapped[list["ShoppingSession"]] = relationship(
         back_populates="household",
         cascade="all, delete-orphan",
     )

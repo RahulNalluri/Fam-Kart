@@ -62,6 +62,11 @@ Listing never exposes plaintext codes or stored code hashes.
 Combined authorization workflows verify owner/member/outsider isolation and
 permission changes after transfer, removal, leaving, and rejoining.
 
+The grocery-list phase now includes the `shopping_sessions` database foundation.
+Each session belongs to one household, records who created it when available, and
+supports active and completed lifecycle states. Grocery items and session API
+endpoints will be added in later modules.
+
 ## Quick Start
 
 PowerShell:
