@@ -68,6 +68,10 @@ supports active and completed lifecycle states. Grocery items and session API
 endpoints will be added in later modules. The shopping-session repository and
 service layers now create and retrieve household-scoped sessions, permit only
 current members, and prevent more than one active session per household.
+Authenticated household members can access this behavior through
+`POST /api/v1/households/{household_id}/shopping-sessions`,
+`GET /api/v1/households/{household_id}/shopping-sessions`, and
+`GET /api/v1/households/{household_id}/shopping-sessions/{session_id}`.
 
 ## Quick Start
 
