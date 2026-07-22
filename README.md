@@ -65,7 +65,9 @@ permission changes after transfer, removal, leaving, and rejoining.
 The grocery-list phase now includes the `shopping_sessions` database foundation.
 Each session belongs to one household, records who created it when available, and
 supports active and completed lifecycle states. Grocery items and session API
-endpoints will be added in later modules.
+endpoints will be added in later modules. The shopping-session repository and
+service layers now create and retrieve household-scoped sessions, permit only
+current members, and prevent more than one active session per household.
 
 ## Quick Start
 
