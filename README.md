@@ -75,6 +75,9 @@ Authenticated household members can access this behavior through
 Members can idempotently complete an active session through
 `PATCH /api/v1/households/{household_id}/shopping-sessions/{session_id}/complete`.
 Completing the active session allows the household to start a new one.
+The `grocery_items` database foundation stores multilingual item names, optional
+decimal quantities, units, notes, assignment and completion attribution, and
+pending/completed lifecycle timestamps within a shopping session.
 
 ## Quick Start
 

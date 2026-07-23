@@ -9,6 +9,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 if TYPE_CHECKING:
+    from app.models.grocery_item import GroceryItem
     from app.models.household import Household
 
 
@@ -57,3 +58,7 @@ class ShoppingSession(Base):
     )
 
     household: Mapped["Household"] = relationship(back_populates="shopping_sessions")
+    items: Mapped[list["GroceryItem"]] = relationship(
+        back_populates="shopping_session",
+        cascade="all, delete-orphan",
+    )
