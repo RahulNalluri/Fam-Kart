@@ -72,6 +72,9 @@ Authenticated household members can access this behavior through
 `POST /api/v1/households/{household_id}/shopping-sessions`,
 `GET /api/v1/households/{household_id}/shopping-sessions`, and
 `GET /api/v1/households/{household_id}/shopping-sessions/{session_id}`.
+Members can idempotently complete an active session through
+`PATCH /api/v1/households/{household_id}/shopping-sessions/{session_id}/complete`.
+Completing the active session allows the household to start a new one.
 
 ## Quick Start
 

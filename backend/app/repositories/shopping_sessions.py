@@ -1,6 +1,7 @@
+from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.models.household import Household
@@ -78,3 +79,47 @@ class ShoppingSessionRepository:
             )
         )
         return list(self.db.execute(statement).scalars().all())
+
+    def complete(
+        self,
+        shopping_session: ShoppingSession,
+        *,
+        completed_at: datetime | None = None,
+    ) -> ShoppingSession:
+        effective_completed_at = completed_at or datetime.now(UTC)
+        try:
+            result = self.db.execute(
+                update(ShoppingSession)
+                .where(
+                    ShoppingSession.id == shopping_session.id,
+                    ShoppingSession.status == ShoppingSessionStatus.ACTIVE,
+                )
+                .values(
+                    status=ShoppingSessionStatus.COMPLETED,
+                    completed_at=effective_completed_at,
+                ),
+                execution_options={"synchronize_session": False},
+            )
+        except Exception:
+            self.db.rollback()
+            raise
+
+        if getattr(result, "rowcount", 0) == 1:
+            try:
+                self.db.commit()
+            except Exception:
+                self.db.rollback()
+                raise
+
+            self.db.refresh(shopping_session)
+            return shopping_session
+
+        self.db.rollback()
+        current = self.db.get(ShoppingSession, shopping_session.id)
+        if current is not None and current.status == ShoppingSessionStatus.COMPLETED:
+            return current
+        raise ShoppingSessionNotActiveError
+
+
+class ShoppingSessionNotActiveError(ValueError):
+    pass

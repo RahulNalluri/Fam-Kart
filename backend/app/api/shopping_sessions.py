@@ -14,6 +14,7 @@ from app.services.shopping_sessions import (
     ActiveShoppingSessionExistsError,
     ShoppingSessionHouseholdNotFoundError,
     ShoppingSessionNotFoundError,
+    complete_shopping_session,
     create_shopping_session,
     get_shopping_session,
     list_shopping_sessions,
@@ -90,6 +91,33 @@ def read_current_household_shopping_session(
 ) -> ShoppingSessionResponse:
     try:
         shopping_session = get_shopping_session(
+            household_id,
+            session_id,
+            current_user,
+            ShoppingSessionRepository(db),
+            HouseholdMemberRepository(db),
+        )
+    except ShoppingSessionNotFoundError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Shopping session not found.",
+        ) from error
+
+    return ShoppingSessionResponse.model_validate(shopping_session)
+
+
+@router.patch(
+    "/{session_id}/complete",
+    response_model=ShoppingSessionResponse,
+)
+def complete_current_household_shopping_session(
+    household_id: UUID,
+    session_id: UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> ShoppingSessionResponse:
+    try:
+        shopping_session = complete_shopping_session(
             household_id,
             session_id,
             current_user,

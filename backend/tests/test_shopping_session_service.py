@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from unittest.mock import Mock
 from uuid import UUID, uuid4
 
@@ -10,6 +11,7 @@ from app.services.shopping_sessions import (
     ActiveShoppingSessionExistsError,
     ShoppingSessionHouseholdNotFoundError,
     ShoppingSessionNotFoundError,
+    complete_shopping_session,
     create_shopping_session,
     get_shopping_session,
     list_shopping_sessions,
@@ -212,6 +214,71 @@ def test_hidden_or_unknown_session_returns_same_error(has_membership: bool) -> N
             member_repository,
         )
 
+    if has_membership:
+        session_repository.get_for_household.assert_called_once()
+    else:
+        session_repository.get_for_household.assert_not_called()
+
+
+@pytest.mark.parametrize("role", [HouseholdRole.OWNER, HouseholdRole.MEMBER])
+def test_current_member_can_complete_session(role: HouseholdRole) -> None:
+    user = build_user()
+    household_id = uuid4()
+    shopping_session = build_session(household_id, user.id)
+    completed_at = datetime.now(UTC)
+    member_repository = Mock(spec=HouseholdMemberRepository)
+    member_repository.lock_for_users.return_value = {
+        user.id: build_membership(user.id, household_id, role=role),
+    }
+    session_repository = Mock(spec=ShoppingSessionRepository)
+    session_repository.get_for_household.return_value = shopping_session
+    session_repository.complete.return_value = shopping_session
+
+    result = complete_shopping_session(
+        household_id,
+        shopping_session.id,
+        user,
+        session_repository,
+        member_repository,
+        completed_at=completed_at,
+    )
+
+    assert result is shopping_session
+    member_repository.lock_for_users.assert_called_once_with(
+        household_id=household_id,
+        user_ids={user.id},
+    )
+    session_repository.get_for_household.assert_called_once_with(
+        session_id=shopping_session.id,
+        household_id=household_id,
+    )
+    session_repository.complete.assert_called_once_with(
+        shopping_session,
+        completed_at=completed_at,
+    )
+
+
+@pytest.mark.parametrize("has_membership", [False, True])
+def test_outsider_or_unknown_session_cannot_complete(has_membership: bool) -> None:
+    user = build_user()
+    household_id = uuid4()
+    member_repository = Mock(spec=HouseholdMemberRepository)
+    member_repository.lock_for_users.return_value = (
+        {user.id: build_membership(user.id, household_id)} if has_membership else {}
+    )
+    session_repository = Mock(spec=ShoppingSessionRepository)
+    session_repository.get_for_household.return_value = None
+
+    with pytest.raises(ShoppingSessionNotFoundError):
+        complete_shopping_session(
+            household_id,
+            uuid4(),
+            user,
+            session_repository,
+            member_repository,
+        )
+
+    session_repository.complete.assert_not_called()
     if has_membership:
         session_repository.get_for_household.assert_called_once()
     else:

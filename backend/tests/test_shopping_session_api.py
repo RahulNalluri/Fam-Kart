@@ -349,3 +349,120 @@ def test_shopping_session_endpoints_reject_malformed_ids(
 
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "validation_error"
+
+
+@pytest.mark.parametrize(
+    ("role", "email"),
+    [
+        (HouseholdRole.OWNER, "session-complete-owner@example.com"),
+        (HouseholdRole.MEMBER, "session-complete-member@example.com"),
+    ],
+)
+def test_current_member_can_complete_session_idempotently(
+    client: TestClient,
+    db_session: Session,
+    role: HouseholdRole,
+    email: str,
+) -> None:
+    user = create_user(db_session, email=email)
+    household = create_household(db_session, name="Completion API Family")
+    add_membership(db_session, household=household, user=user, role=role)
+    create_response = client.post(
+        f"/api/v1/households/{household.id}/shopping-sessions",
+        headers=authorization_header(user),
+    )
+    session_id = create_response.json()["id"]
+    url = (
+        f"/api/v1/households/{household.id}/shopping-sessions/" f"{session_id}/complete"
+    )
+
+    first_response = client.patch(url, headers=authorization_header(user))
+    repeated_response = client.patch(url, headers=authorization_header(user))
+
+    assert first_response.status_code == 200
+    assert first_response.json()["status"] == "completed"
+    assert first_response.json()["completed_at"] is not None
+    assert repeated_response.status_code == 200
+    assert (
+        repeated_response.json()["completed_at"]
+        == first_response.json()["completed_at"]
+    )
+
+
+def test_new_session_can_be_created_after_completion(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user = create_user(db_session, email="session-complete-next@example.com")
+    household = create_household(db_session, name="Next Session Family")
+    add_membership(
+        db_session,
+        household=household,
+        user=user,
+        role=HouseholdRole.OWNER,
+    )
+    collection_url = f"/api/v1/households/{household.id}/shopping-sessions"
+    headers = authorization_header(user)
+    first = client.post(collection_url, headers=headers)
+    complete_url = f"{collection_url}/{first.json()['id']}/complete"
+
+    assert client.patch(complete_url, headers=headers).status_code == 200
+    second = client.post(collection_url, headers=headers)
+
+    assert second.status_code == 201
+    assert second.json()["id"] != first.json()["id"]
+    assert second.json()["status"] == "active"
+
+
+def test_outsider_and_cross_household_session_cannot_complete(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    member = create_user(db_session, email="session-complete-scope@example.com")
+    outsider = create_user(db_session, email="session-complete-outsider@example.com")
+    household = create_household(db_session, name="Completion Scope Family")
+    other_household = create_household(db_session, name="Other Completion Family")
+    add_membership(
+        db_session,
+        household=household,
+        user=member,
+        role=HouseholdRole.MEMBER,
+    )
+    hidden_session = ShoppingSession(
+        household_id=other_household.id,
+        created_by_user_id=outsider.id,
+        status=ShoppingSessionStatus.ACTIVE,
+    )
+    db_session.add(hidden_session)
+    db_session.commit()
+    url = (
+        f"/api/v1/households/{household.id}/shopping-sessions/"
+        f"{hidden_session.id}/complete"
+    )
+
+    cross_household_response = client.patch(
+        url,
+        headers=authorization_header(member),
+    )
+    outsider_response = client.patch(
+        url,
+        headers=authorization_header(outsider),
+    )
+
+    assert cross_household_response.status_code == 404
+    assert outsider_response.status_code == 404
+    assert cross_household_response.json()["error"]["message"] == (
+        "Shopping session not found."
+    )
+    assert outsider_response.json()["error"]["message"] == (
+        "Shopping session not found."
+    )
+
+
+def test_complete_session_requires_access_token(client: TestClient) -> None:
+    response = client.patch(
+        f"/api/v1/households/{uuid4()}/shopping-sessions/{uuid4()}/complete",
+    )
+
+    assert response.status_code == 401
+    assert response.headers["www-authenticate"] == "Bearer"

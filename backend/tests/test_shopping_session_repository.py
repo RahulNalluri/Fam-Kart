@@ -154,3 +154,69 @@ def test_repository_rolls_back_when_creation_commit_fails() -> None:
 
     db.rollback.assert_called_once_with()
     db.refresh.assert_not_called()
+
+
+def test_repository_completes_active_session() -> None:
+    db = create_test_session()
+    try:
+        user = create_user(db, email="session-complete@example.com")
+        household = create_household(db, name="Session Completion Family")
+        repository = ShoppingSessionRepository(db)
+        shopping_session = repository.create(
+            household_id=household.id,
+            created_by_user_id=user.id,
+        )
+        completed_at = datetime.now(UTC).replace(microsecond=0)
+
+        completed = repository.complete(
+            shopping_session,
+            completed_at=completed_at,
+        )
+
+        assert completed.status == ShoppingSessionStatus.COMPLETED
+        assert completed.completed_at is not None
+        assert completed.completed_at.replace(tzinfo=UTC) == completed_at
+        assert repository.get_active_for_household(household.id) is None
+    finally:
+        db.close()
+
+
+def test_repository_completion_is_idempotent() -> None:
+    db = create_test_session()
+    try:
+        user = create_user(db, email="session-idempotent@example.com")
+        household = create_household(db, name="Idempotent Completion Family")
+        repository = ShoppingSessionRepository(db)
+        shopping_session = repository.create(
+            household_id=household.id,
+            created_by_user_id=user.id,
+        )
+        original_completed_at = datetime.now(UTC).replace(microsecond=0)
+        first = repository.complete(
+            shopping_session,
+            completed_at=original_completed_at,
+        )
+
+        repeated = repository.complete(
+            first,
+            completed_at=original_completed_at + timedelta(minutes=5),
+        )
+
+        assert repeated.status == ShoppingSessionStatus.COMPLETED
+        assert repeated.completed_at is not None
+        assert repeated.completed_at.replace(tzinfo=UTC) == original_completed_at
+    finally:
+        db.close()
+
+
+def test_repository_rolls_back_when_completion_update_fails() -> None:
+    db = Mock(spec=Session)
+    db.execute.side_effect = RuntimeError("database unavailable")
+    repository = ShoppingSessionRepository(db)
+    shopping_session = ShoppingSession(id=uuid4())
+
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        repository.complete(shopping_session)
+
+    db.rollback.assert_called_once_with()
+    db.commit.assert_not_called()
