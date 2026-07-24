@@ -78,6 +78,9 @@ Completing the active session allows the household to start a new one.
 The `grocery_items` database foundation stores multilingual item names, optional
 decimal quantities, units, notes, assignment and completion attribution, and
 pending/completed lifecycle timestamps within a shopping session.
+Grocery-item request schemas normalize user-entered text and validate quantities,
+field lengths, optional assignment IDs, and server-managed fields before any
+future repository or API operation receives the data.
 
 ## Quick Start
 
