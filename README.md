@@ -81,6 +81,9 @@ pending/completed lifecycle timestamps within a shopping session.
 Grocery-item request schemas normalize user-entered text and validate quantities,
 field lengths, optional assignment IDs, and server-managed fields before any
 future repository or API operation receives the data.
+The grocery-item repository persists pending items, scopes individual lookups to
+their shopping session, lists pending items before completed items, and rolls
+back failed writes.
 
 ## Quick Start
 
