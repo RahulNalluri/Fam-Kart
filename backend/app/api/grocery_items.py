@@ -1,15 +1,17 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user
 from app.db.session import get_db
 from app.models.user import User
+from app.repositories.grocery_activity_events import GroceryActivityEventRepository
 from app.repositories.grocery_items import GroceryItemRepository
 from app.repositories.household_members import HouseholdMemberRepository
 from app.repositories.shopping_sessions import ShoppingSessionRepository
+from app.schemas.grocery_activity_events import GroceryActivityEventResponse
 from app.schemas.grocery_items import (
     CreateGroceryItemRequest,
     GroceryItemResponse,
@@ -24,6 +26,7 @@ from app.services.grocery_items import (
     complete_grocery_item,
     create_grocery_item,
     delete_grocery_item,
+    list_grocery_activity_events,
     list_grocery_items,
     reopen_grocery_item,
     update_grocery_item,
@@ -108,6 +111,36 @@ def list_current_session_grocery_items(
         ) from error
 
     return [GroceryItemResponse.model_validate(item) for item in items]
+
+
+@router.get("/activity", response_model=list[GroceryActivityEventResponse])
+def list_current_session_grocery_activity(
+    household_id: UUID,
+    session_id: UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+) -> list[GroceryActivityEventResponse]:
+    try:
+        events = list_grocery_activity_events(
+            household_id,
+            session_id,
+            current_user,
+            GroceryActivityEventRepository(db),
+            ShoppingSessionRepository(db),
+            HouseholdMemberRepository(db),
+            limit=limit,
+        )
+    except GroceryItemShoppingSessionNotFoundError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                "This shopping session could not be found or you do not have "
+                "access to it."
+            ),
+        ) from error
+
+    return [GroceryActivityEventResponse.model_validate(event) for event in events]
 
 
 @router.patch("/{item_id}", response_model=GroceryItemResponse)

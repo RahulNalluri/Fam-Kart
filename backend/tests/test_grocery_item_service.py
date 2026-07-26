@@ -6,6 +6,8 @@ from uuid import UUID, uuid4
 import pytest
 
 from app.models import (
+    GroceryActivityEvent,
+    GroceryActivityType,
     GroceryItem,
     GroceryItemStatus,
     HouseholdMember,
@@ -14,6 +16,7 @@ from app.models import (
     ShoppingSessionStatus,
     User,
 )
+from app.repositories.grocery_activity_events import GroceryActivityEventRepository
 from app.repositories.grocery_items import GroceryItemRepository
 from app.repositories.household_members import HouseholdMemberRepository
 from app.repositories.shopping_sessions import ShoppingSessionRepository
@@ -27,6 +30,7 @@ from app.services.grocery_items import (
     complete_grocery_item,
     create_grocery_item,
     delete_grocery_item,
+    list_grocery_activity_events,
     list_grocery_items,
     reopen_grocery_item,
     update_grocery_item,
@@ -115,6 +119,7 @@ def test_current_member_can_create_unassigned_item(role: HouseholdRole) -> None:
         user_ids={user.id},
     )
     item_repository.create.assert_called_once_with(
+        household_id=household_id,
         shopping_session_id=shopping_session.id,
         name="Rice",
         quantity=Decimal("5"),
@@ -359,7 +364,11 @@ def test_current_member_can_update_pending_item(role: HouseholdRole) -> None:
     assert item.name == "Brown rice"
     assert item.quantity == Decimal("2.500")
     assert item.assigned_to_user_id == assignee.id
-    item_repository.update.assert_called_once_with(item)
+    item_repository.update.assert_called_once_with(
+        item,
+        household_id=household_id,
+        actor_user_id=user.id,
+    )
 
 
 def test_update_can_clear_optional_item_fields() -> None:
@@ -543,6 +552,7 @@ def test_current_member_can_complete_item(role: HouseholdRole) -> None:
     assert result is item
     item_repository.complete.assert_called_once_with(
         item,
+        household_id=household_id,
         completed_by_user_id=user.id,
         completed_at=completed_at,
     )
@@ -576,7 +586,11 @@ def test_current_member_can_reopen_item(role: HouseholdRole) -> None:
     )
 
     assert result is item
-    item_repository.reopen.assert_called_once_with(item)
+    item_repository.reopen.assert_called_once_with(
+        item,
+        household_id=household_id,
+        actor_user_id=user.id,
+    )
 
 
 @pytest.mark.parametrize("operation", [complete_grocery_item, reopen_grocery_item])
@@ -657,7 +671,11 @@ def test_current_member_can_delete_pending_item(role: HouseholdRole) -> None:
         member_repository,
     )
 
-    item_repository.delete.assert_called_once_with(item)
+    item_repository.delete.assert_called_once_with(
+        item,
+        household_id=household_id,
+        actor_user_id=user.id,
+    )
 
 
 def test_outsider_cannot_delete_or_discover_item() -> None:
@@ -739,3 +757,79 @@ def test_completed_item_must_be_reopened_before_deletion() -> None:
         )
 
     item_repository.delete.assert_not_called()
+
+
+def test_member_can_list_scoped_grocery_activity() -> None:
+    user = build_user()
+    household_id = uuid4()
+    shopping_session = build_session(household_id)
+    expected = [
+        GroceryActivityEvent(
+            id=uuid4(),
+            household_id=household_id,
+            shopping_session_id=shopping_session.id,
+            grocery_item_id=uuid4(),
+            actor_user_id=user.id,
+            event_type=GroceryActivityType.ITEM_ADDED,
+            item_name="Rice",
+            sequence_number=1,
+            created_at=datetime.now(UTC),
+        ),
+    ]
+    member_repository = Mock(spec=HouseholdMemberRepository)
+    member_repository.get_for_user_and_household.return_value = build_membership(
+        user.id,
+        household_id,
+    )
+    session_repository = Mock(spec=ShoppingSessionRepository)
+    session_repository.get_for_household.return_value = shopping_session
+    event_repository = Mock(spec=GroceryActivityEventRepository)
+    event_repository.list_for_session.return_value = expected
+
+    result = list_grocery_activity_events(
+        household_id,
+        shopping_session.id,
+        user,
+        event_repository,
+        session_repository,
+        member_repository,
+        limit=25,
+    )
+
+    assert result is expected
+    event_repository.list_for_session.assert_called_once_with(
+        shopping_session.id,
+        limit=25,
+    )
+
+
+@pytest.mark.parametrize("has_membership", [False, True])
+def test_outsider_or_unknown_session_cannot_list_activity(
+    has_membership: bool,
+) -> None:
+    user = build_user()
+    household_id = uuid4()
+    member_repository = Mock(spec=HouseholdMemberRepository)
+    member_repository.get_for_user_and_household.return_value = (
+        build_membership(user.id, household_id) if has_membership else None
+    )
+    session_repository = Mock(spec=ShoppingSessionRepository)
+    session_repository.get_for_household.return_value = None
+    event_repository = Mock(spec=GroceryActivityEventRepository)
+
+    with pytest.raises(GroceryItemShoppingSessionNotFoundError):
+        list_grocery_activity_events(
+            household_id,
+            uuid4(),
+            user,
+            event_repository,
+            session_repository,
+            member_repository,
+            limit=50,
+        )
+
+    event_repository.list_for_session.assert_not_called()
+    if has_membership:
+        session_repository.get_for_household.assert_called_once()
+    else:
+        session_repository.get_for_household.assert_not_called()

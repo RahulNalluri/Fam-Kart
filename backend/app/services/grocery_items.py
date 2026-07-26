@@ -1,9 +1,11 @@
 from datetime import datetime
 from uuid import UUID
 
+from app.models.grocery_activity_event import GroceryActivityEvent
 from app.models.grocery_item import GroceryItem, GroceryItemStatus
 from app.models.shopping_session import ShoppingSessionStatus
 from app.models.user import User
+from app.repositories.grocery_activity_events import GroceryActivityEventRepository
 from app.repositories.grocery_items import GroceryItemRepository
 from app.repositories.household_members import HouseholdMemberRepository
 from app.repositories.shopping_sessions import ShoppingSessionRepository
@@ -65,6 +67,7 @@ def create_grocery_item(
         raise GroceryItemShoppingSessionCompletedError
 
     return item_repository.create(
+        household_id=household_id,
         shopping_session_id=shopping_session.id,
         name=data.name,
         quantity=data.quantity,
@@ -148,7 +151,11 @@ def update_grocery_item(
     for field, value in changes.items():
         setattr(item, field, value)
 
-    return item_repository.update(item)
+    return item_repository.update(
+        item,
+        household_id=household_id,
+        actor_user_id=user.id,
+    )
 
 
 def _get_item_for_active_session(
@@ -207,6 +214,7 @@ def complete_grocery_item(
     )
     return item_repository.complete(
         item,
+        household_id=household_id,
         completed_by_user_id=user.id,
         completed_at=completed_at,
     )
@@ -230,7 +238,11 @@ def reopen_grocery_item(
         session_repository,
         member_repository,
     )
-    return item_repository.reopen(item)
+    return item_repository.reopen(
+        item,
+        household_id=household_id,
+        actor_user_id=user.id,
+    )
 
 
 def delete_grocery_item(
@@ -254,4 +266,38 @@ def delete_grocery_item(
     if item.status != GroceryItemStatus.PENDING:
         raise GroceryItemCompletedError
 
-    item_repository.delete(item)
+    item_repository.delete(
+        item,
+        household_id=household_id,
+        actor_user_id=user.id,
+    )
+
+
+def list_grocery_activity_events(
+    household_id: UUID,
+    session_id: UUID,
+    user: User,
+    event_repository: GroceryActivityEventRepository,
+    session_repository: ShoppingSessionRepository,
+    member_repository: HouseholdMemberRepository,
+    *,
+    limit: int,
+) -> list[GroceryActivityEvent]:
+    membership = member_repository.get_for_user_and_household(
+        user_id=user.id,
+        household_id=household_id,
+    )
+    if membership is None:
+        raise GroceryItemShoppingSessionNotFoundError
+
+    shopping_session = session_repository.get_for_household(
+        session_id=session_id,
+        household_id=household_id,
+    )
+    if shopping_session is None:
+        raise GroceryItemShoppingSessionNotFoundError
+
+    return event_repository.list_for_session(
+        shopping_session.id,
+        limit=limit,
+    )

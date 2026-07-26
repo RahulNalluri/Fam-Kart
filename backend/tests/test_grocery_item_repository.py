@@ -55,6 +55,7 @@ def test_repository_creates_pending_item_with_all_input_fields() -> None:
         repository = GroceryItemRepository(db)
 
         item = repository.create(
+            household_id=shopping_session.household_id,
             shopping_session_id=shopping_session.id,
             name="Tomatoes - టమాటాలు",
             quantity=Decimal("2.500"),
@@ -85,6 +86,7 @@ def test_repository_creates_name_only_item() -> None:
         repository = GroceryItemRepository(db)
 
         item = repository.create(
+            household_id=shopping_session.household_id,
             shopping_session_id=shopping_session.id,
             name="Milk",
             quantity=None,
@@ -110,6 +112,7 @@ def test_repository_scopes_item_lookup_to_shopping_session() -> None:
         _, other_session = create_dependencies(db, suffix="other-scope")
         repository = GroceryItemRepository(db)
         item = repository.create(
+            household_id=shopping_session.household_id,
             shopping_session_id=shopping_session.id,
             name="Rice",
             quantity=Decimal("5"),
@@ -194,6 +197,7 @@ def test_repository_rolls_back_when_creation_commit_fails() -> None:
 
     with pytest.raises(RuntimeError, match="database unavailable"):
         repository.create(
+            household_id=uuid4(),
             shopping_session_id=uuid4(),
             name="Rice",
             quantity=Decimal("5"),
@@ -213,6 +217,7 @@ def test_repository_updates_and_persists_item_fields() -> None:
         user, shopping_session = create_dependencies(db, suffix="update")
         repository = GroceryItemRepository(db)
         item = repository.create(
+            household_id=shopping_session.household_id,
             shopping_session_id=shopping_session.id,
             name="Rice",
             quantity=Decimal("5"),
@@ -231,7 +236,11 @@ def test_repository_updates_and_persists_item_fields() -> None:
         locked_item.quantity = Decimal("2.500")
         locked_item.assigned_to_user_id = user.id
 
-        updated = repository.update(locked_item)
+        updated = repository.update(
+            locked_item,
+            household_id=shopping_session.household_id,
+            actor_user_id=user.id,
+        )
 
         assert updated.name == "Brown rice"
         assert updated.quantity == Decimal("2.500")
@@ -247,6 +256,7 @@ def test_repository_update_lookup_remains_scoped_to_session() -> None:
         _, other_session = create_dependencies(db, suffix="other-update-scope")
         repository = GroceryItemRepository(db)
         item = repository.create(
+            household_id=shopping_session.household_id,
             shopping_session_id=shopping_session.id,
             name="Rice",
             quantity=None,
@@ -274,7 +284,11 @@ def test_repository_rolls_back_when_update_commit_fails() -> None:
     item = GroceryItem(name="Rice", shopping_session_id=uuid4())
 
     with pytest.raises(RuntimeError, match="database unavailable"):
-        repository.update(item)
+        repository.update(
+            item,
+            household_id=uuid4(),
+            actor_user_id=uuid4(),
+        )
 
     db.rollback.assert_called_once_with()
     db.refresh.assert_not_called()
@@ -286,6 +300,7 @@ def test_repository_completes_pending_item_with_actor_and_timestamp() -> None:
         user, shopping_session = create_dependencies(db, suffix="complete")
         repository = GroceryItemRepository(db)
         item = repository.create(
+            household_id=shopping_session.household_id,
             shopping_session_id=shopping_session.id,
             name="Rice",
             quantity=None,
@@ -298,6 +313,7 @@ def test_repository_completes_pending_item_with_actor_and_timestamp() -> None:
 
         completed = repository.complete(
             item,
+            household_id=shopping_session.household_id,
             completed_by_user_id=user.id,
             completed_at=completed_at,
         )
@@ -317,6 +333,7 @@ def test_repository_complete_is_idempotent_and_preserves_original_details() -> N
         other_user, _ = create_dependencies(db, suffix="complete-repeat-other")
         repository = GroceryItemRepository(db)
         item = repository.create(
+            household_id=shopping_session.household_id,
             shopping_session_id=shopping_session.id,
             name="Milk",
             quantity=None,
@@ -328,12 +345,14 @@ def test_repository_complete_is_idempotent_and_preserves_original_details() -> N
         original_time = datetime.now(UTC).replace(microsecond=0)
         repository.complete(
             item,
+            household_id=shopping_session.household_id,
             completed_by_user_id=user.id,
             completed_at=original_time,
         )
 
         repeated = repository.complete(
             item,
+            household_id=shopping_session.household_id,
             completed_by_user_id=other_user.id,
             completed_at=original_time + timedelta(minutes=5),
         )
@@ -351,6 +370,7 @@ def test_repository_reopens_completed_item_and_is_idempotent() -> None:
         user, shopping_session = create_dependencies(db, suffix="reopen")
         repository = GroceryItemRepository(db)
         item = repository.create(
+            household_id=shopping_session.household_id,
             shopping_session_id=shopping_session.id,
             name="Milk",
             quantity=None,
@@ -359,10 +379,22 @@ def test_repository_reopens_completed_item_and_is_idempotent() -> None:
             created_by_user_id=user.id,
             assigned_to_user_id=None,
         )
-        repository.complete(item, completed_by_user_id=user.id)
+        repository.complete(
+            item,
+            household_id=shopping_session.household_id,
+            completed_by_user_id=user.id,
+        )
 
-        reopened = repository.reopen(item)
-        repeated = repository.reopen(reopened)
+        reopened = repository.reopen(
+            item,
+            household_id=shopping_session.household_id,
+            actor_user_id=user.id,
+        )
+        repeated = repository.reopen(
+            reopened,
+            household_id=shopping_session.household_id,
+            actor_user_id=user.id,
+        )
 
         assert repeated.status == GroceryItemStatus.PENDING
         assert repeated.completed_by_user_id is None
@@ -382,9 +414,17 @@ def test_repository_rolls_back_when_transition_execution_fails(
 
     with pytest.raises(RuntimeError, match="database unavailable"):
         if operation == "complete":
-            repository.complete(item, completed_by_user_id=uuid4())
+            repository.complete(
+                item,
+                household_id=uuid4(),
+                completed_by_user_id=uuid4(),
+            )
         else:
-            repository.reopen(item)
+            repository.reopen(
+                item,
+                household_id=uuid4(),
+                actor_user_id=uuid4(),
+            )
 
     db.rollback.assert_called_once_with()
     db.commit.assert_not_called()
@@ -396,6 +436,7 @@ def test_repository_permanently_deletes_item() -> None:
         user, shopping_session = create_dependencies(db, suffix="delete")
         repository = GroceryItemRepository(db)
         item = repository.create(
+            household_id=shopping_session.household_id,
             shopping_session_id=shopping_session.id,
             name="Rice",
             quantity=None,
@@ -406,7 +447,11 @@ def test_repository_permanently_deletes_item() -> None:
         )
         item_id = item.id
 
-        repository.delete(item)
+        repository.delete(
+            item,
+            household_id=shopping_session.household_id,
+            actor_user_id=user.id,
+        )
 
         assert db.get(GroceryItem, item_id) is None
         assert (
@@ -427,7 +472,11 @@ def test_repository_rolls_back_when_delete_commit_fails() -> None:
     item = GroceryItem(id=uuid4(), name="Rice", shopping_session_id=uuid4())
 
     with pytest.raises(RuntimeError, match="database unavailable"):
-        repository.delete(item)
+        repository.delete(
+            item,
+            household_id=uuid4(),
+            actor_user_id=uuid4(),
+        )
 
     db.delete.assert_called_once_with(item)
     db.rollback.assert_called_once_with()

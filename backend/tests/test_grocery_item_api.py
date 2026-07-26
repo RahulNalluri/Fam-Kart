@@ -1,7 +1,7 @@
 from collections.abc import Generator
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -14,6 +14,7 @@ from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
 from app.models import (
+    GroceryActivityEvent,
     GroceryItem,
     GroceryItemStatus,
     Household,
@@ -131,6 +132,10 @@ def transition_url(
     action: str,
 ) -> str:
     return f"{item_url(household_id, session_id, item_id)}/{action}"
+
+
+def activity_url(household_id: object, session_id: object) -> str:
+    return f"{collection_url(household_id, session_id)}/activity"
 
 
 def create_grocery_item(
@@ -1169,6 +1174,194 @@ def test_delete_item_rejects_malformed_item_id(
 
     response = client.delete(
         item_url(uuid4(), uuid4(), "not-a-uuid"),
+        headers=authorization_header(member),
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
+
+
+def test_grocery_mutations_create_ordered_activity_without_idempotent_duplicates(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    owner = create_user(db_session, email="activity-api-owner@example.com")
+    member = create_user(db_session, email="activity-api-member@example.com")
+    household = create_household(db_session, name="Activity API Household")
+    add_membership(
+        db_session,
+        household=household,
+        user=owner,
+        role=HouseholdRole.OWNER,
+    )
+    add_membership(
+        db_session,
+        household=household,
+        user=member,
+        role=HouseholdRole.MEMBER,
+    )
+    shopping_session = create_shopping_session(
+        db_session,
+        household=household,
+        creator=owner,
+    )
+    collection = collection_url(household.id, shopping_session.id)
+
+    created = client.post(
+        collection,
+        headers=authorization_header(owner),
+        json={"name": "Rice"},
+    )
+    assert created.status_code == 201
+    item_id = created.json()["id"]
+    item = item_url(household.id, shopping_session.id, item_id)
+
+    edited = client.patch(
+        item,
+        headers=authorization_header(member),
+        json={"name": "Brown rice"},
+    )
+    completed = client.patch(
+        f"{item}/complete",
+        headers=authorization_header(owner),
+    )
+    repeated_complete = client.patch(
+        f"{item}/complete",
+        headers=authorization_header(member),
+    )
+    reopened = client.patch(
+        f"{item}/reopen",
+        headers=authorization_header(member),
+    )
+    repeated_reopen = client.patch(
+        f"{item}/reopen",
+        headers=authorization_header(owner),
+    )
+    deleted = client.delete(item, headers=authorization_header(owner))
+
+    assert edited.status_code == 200
+    assert completed.status_code == 200
+    assert repeated_complete.status_code == 200
+    assert reopened.status_code == 200
+    assert repeated_reopen.status_code == 200
+    assert deleted.status_code == 204
+
+    response = client.get(
+        activity_url(household.id, shopping_session.id),
+        headers=authorization_header(member),
+    )
+
+    assert response.status_code == 200
+    events = response.json()
+    assert [event["event_type"] for event in events] == [
+        "item_deleted",
+        "item_reopened",
+        "item_completed",
+        "item_edited",
+        "item_added",
+    ]
+    assert [event["actor_user_id"] for event in events] == [
+        str(owner.id),
+        str(member.id),
+        str(owner.id),
+        str(member.id),
+        str(owner.id),
+    ]
+    assert [event["item_name"] for event in events] == [
+        "Brown rice",
+        "Brown rice",
+        "Brown rice",
+        "Brown rice",
+        "Rice",
+    ]
+    assert {event["grocery_item_id"] for event in events} == {item_id}
+    assert [event["sequence_number"] for event in events] == [5, 4, 3, 2, 1]
+    assert db_session.get(GroceryItem, UUID(item_id)) is None
+    assert db_session.query(GroceryActivityEvent).count() == 5
+
+
+def test_activity_list_honors_limit(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    member = create_user(db_session, email="activity-limit@example.com")
+    household = create_household(db_session, name="Limited Activity")
+    add_membership(
+        db_session,
+        household=household,
+        user=member,
+        role=HouseholdRole.MEMBER,
+    )
+    shopping_session = create_shopping_session(
+        db_session,
+        household=household,
+        creator=member,
+    )
+    collection = collection_url(household.id, shopping_session.id)
+    headers = authorization_header(member)
+    for name in ("Rice", "Milk", "Onions"):
+        assert (
+            client.post(collection, headers=headers, json={"name": name}).status_code
+            == 201
+        )
+
+    response = client.get(
+        f"{activity_url(household.id, shopping_session.id)}?limit=2",
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert len(response.json()) == 2
+    assert [event["item_name"] for event in response.json()] == ["Onions", "Milk"]
+
+
+def test_outsider_cannot_list_grocery_activity(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    member = create_user(db_session, email="activity-private@example.com")
+    outsider = create_user(db_session, email="activity-outsider@example.com")
+    household = create_household(db_session, name="Private Activity")
+    add_membership(
+        db_session,
+        household=household,
+        user=member,
+        role=HouseholdRole.MEMBER,
+    )
+    shopping_session = create_shopping_session(
+        db_session,
+        household=household,
+        creator=member,
+    )
+
+    response = client.get(
+        activity_url(household.id, shopping_session.id),
+        headers=authorization_header(outsider),
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["message"] == (
+        "This shopping session could not be found or you do not have access to it."
+    )
+
+
+def test_activity_list_requires_authentication(client: TestClient) -> None:
+    response = client.get(activity_url(uuid4(), uuid4()))
+
+    assert response.status_code == 401
+    assert response.json()["error"]["message"] == "Please log in again to continue."
+
+
+@pytest.mark.parametrize("limit", [0, 101])
+def test_activity_list_validates_limit(
+    client: TestClient,
+    db_session: Session,
+    limit: int,
+) -> None:
+    member = create_user(db_session, email=f"activity-limit-{limit}@example.com")
+
+    response = client.get(
+        f"{activity_url(uuid4(), uuid4())}?limit={limit}",
         headers=authorization_header(member),
     )
 

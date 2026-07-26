@@ -98,6 +98,8 @@ through the corresponding `.../items/{item_id}/complete` and
 `.../items/{item_id}/reopen` PATCH endpoints.
 Pending items in active sessions can be permanently removed through
 `DELETE /api/v1/households/{household_id}/shopping-sessions/{session_id}/items/{item_id}`.
+Grocery mutations are recorded as activity events and can be listed newest first
+through `GET /api/v1/households/{household_id}/shopping-sessions/{session_id}/items/activity`.
 
 ## Quick Start
 

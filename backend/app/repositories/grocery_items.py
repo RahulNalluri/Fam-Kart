@@ -2,9 +2,13 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import case, select, update
+from sqlalchemy import case, func, select, update
 from sqlalchemy.orm import Session
 
+from app.models.grocery_activity_event import (
+    GroceryActivityEvent,
+    GroceryActivityType,
+)
 from app.models.grocery_item import GroceryItem, GroceryItemStatus
 
 
@@ -15,6 +19,7 @@ class GroceryItemRepository:
     def create(
         self,
         *,
+        household_id: UUID,
         shopping_session_id: UUID,
         name: str,
         quantity: Decimal | None,
@@ -35,6 +40,13 @@ class GroceryItemRepository:
         )
         self.db.add(item)
         try:
+            self.db.flush()
+            self._add_activity_event(
+                household_id=household_id,
+                item=item,
+                actor_user_id=created_by_user_id,
+                event_type=GroceryActivityType.ITEM_ADDED,
+            )
             self.db.commit()
         except Exception:
             self.db.rollback()
@@ -71,8 +83,20 @@ class GroceryItemRepository:
         )
         return self.db.execute(statement).scalar_one_or_none()
 
-    def update(self, item: GroceryItem) -> GroceryItem:
+    def update(
+        self,
+        item: GroceryItem,
+        *,
+        household_id: UUID,
+        actor_user_id: UUID,
+    ) -> GroceryItem:
         try:
+            self._add_activity_event(
+                household_id=household_id,
+                item=item,
+                actor_user_id=actor_user_id,
+                event_type=GroceryActivityType.ITEM_EDITED,
+            )
             self.db.commit()
         except Exception:
             self.db.rollback()
@@ -85,6 +109,7 @@ class GroceryItemRepository:
         self,
         item: GroceryItem,
         *,
+        household_id: UUID,
         completed_by_user_id: UUID,
         completed_at: datetime | None = None,
     ) -> GroceryItem:
@@ -109,6 +134,12 @@ class GroceryItemRepository:
 
         if getattr(result, "rowcount", 0) == 1:
             try:
+                self._add_activity_event(
+                    household_id=household_id,
+                    item=item,
+                    actor_user_id=completed_by_user_id,
+                    event_type=GroceryActivityType.ITEM_COMPLETED,
+                )
                 self.db.commit()
             except Exception:
                 self.db.rollback()
@@ -123,7 +154,13 @@ class GroceryItemRepository:
             return current
         raise GroceryItemTransitionError
 
-    def reopen(self, item: GroceryItem) -> GroceryItem:
+    def reopen(
+        self,
+        item: GroceryItem,
+        *,
+        household_id: UUID,
+        actor_user_id: UUID,
+    ) -> GroceryItem:
         try:
             result = self.db.execute(
                 update(GroceryItem)
@@ -144,6 +181,12 @@ class GroceryItemRepository:
 
         if getattr(result, "rowcount", 0) == 1:
             try:
+                self._add_activity_event(
+                    household_id=household_id,
+                    item=item,
+                    actor_user_id=actor_user_id,
+                    event_type=GroceryActivityType.ITEM_REOPENED,
+                )
                 self.db.commit()
             except Exception:
                 self.db.rollback()
@@ -158,9 +201,21 @@ class GroceryItemRepository:
             return current
         raise GroceryItemTransitionError
 
-    def delete(self, item: GroceryItem) -> None:
-        self.db.delete(item)
+    def delete(
+        self,
+        item: GroceryItem,
+        *,
+        household_id: UUID,
+        actor_user_id: UUID,
+    ) -> None:
         try:
+            self._add_activity_event(
+                household_id=household_id,
+                item=item,
+                actor_user_id=actor_user_id,
+                event_type=GroceryActivityType.ITEM_DELETED,
+            )
+            self.db.delete(item)
             self.db.commit()
         except Exception:
             self.db.rollback()
@@ -177,6 +232,40 @@ class GroceryItemRepository:
             )
         )
         return list(self.db.execute(statement).scalars().all())
+
+    def _add_activity_event(
+        self,
+        *,
+        household_id: UUID,
+        item: GroceryItem,
+        actor_user_id: UUID,
+        event_type: GroceryActivityType,
+    ) -> None:
+        sequence_number = self.db.scalar(
+            select(
+                func.coalesce(
+                    func.max(GroceryActivityEvent.sequence_number),
+                    0,
+                )
+                + 1,
+            ).where(
+                GroceryActivityEvent.shopping_session_id == item.shopping_session_id,
+            ),
+        )
+        if sequence_number is None:
+            raise RuntimeError("Could not allocate grocery activity sequence.")
+
+        self.db.add(
+            GroceryActivityEvent(
+                household_id=household_id,
+                shopping_session_id=item.shopping_session_id,
+                grocery_item_id=item.id,
+                actor_user_id=actor_user_id,
+                event_type=event_type,
+                item_name=item.name,
+                sequence_number=sequence_number,
+            ),
+        )
 
 
 class GroceryItemTransitionError(ValueError):
