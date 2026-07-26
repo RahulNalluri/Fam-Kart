@@ -151,7 +151,7 @@ def update_grocery_item(
     return item_repository.update(item)
 
 
-def _get_item_for_transition(
+def _get_item_for_active_session(
     household_id: UUID,
     session_id: UUID,
     item_id: UUID,
@@ -196,7 +196,7 @@ def complete_grocery_item(
     *,
     completed_at: datetime | None = None,
 ) -> GroceryItem:
-    item = _get_item_for_transition(
+    item = _get_item_for_active_session(
         household_id,
         session_id,
         item_id,
@@ -221,7 +221,7 @@ def reopen_grocery_item(
     session_repository: ShoppingSessionRepository,
     member_repository: HouseholdMemberRepository,
 ) -> GroceryItem:
-    item = _get_item_for_transition(
+    item = _get_item_for_active_session(
         household_id,
         session_id,
         item_id,
@@ -231,3 +231,27 @@ def reopen_grocery_item(
         member_repository,
     )
     return item_repository.reopen(item)
+
+
+def delete_grocery_item(
+    household_id: UUID,
+    session_id: UUID,
+    item_id: UUID,
+    user: User,
+    item_repository: GroceryItemRepository,
+    session_repository: ShoppingSessionRepository,
+    member_repository: HouseholdMemberRepository,
+) -> None:
+    item = _get_item_for_active_session(
+        household_id,
+        session_id,
+        item_id,
+        user,
+        item_repository,
+        session_repository,
+        member_repository,
+    )
+    if item.status != GroceryItemStatus.PENDING:
+        raise GroceryItemCompletedError
+
+    item_repository.delete(item)

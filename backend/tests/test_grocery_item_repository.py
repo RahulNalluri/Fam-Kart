@@ -388,3 +388,46 @@ def test_repository_rolls_back_when_transition_execution_fails(
 
     db.rollback.assert_called_once_with()
     db.commit.assert_not_called()
+
+
+def test_repository_permanently_deletes_item() -> None:
+    db = create_test_session()
+    try:
+        user, shopping_session = create_dependencies(db, suffix="delete")
+        repository = GroceryItemRepository(db)
+        item = repository.create(
+            shopping_session_id=shopping_session.id,
+            name="Rice",
+            quantity=None,
+            unit=None,
+            notes=None,
+            created_by_user_id=user.id,
+            assigned_to_user_id=None,
+        )
+        item_id = item.id
+
+        repository.delete(item)
+
+        assert db.get(GroceryItem, item_id) is None
+        assert (
+            repository.get_for_session(
+                item_id=item_id,
+                shopping_session_id=shopping_session.id,
+            )
+            is None
+        )
+    finally:
+        db.close()
+
+
+def test_repository_rolls_back_when_delete_commit_fails() -> None:
+    db = Mock(spec=Session)
+    db.commit.side_effect = RuntimeError("database unavailable")
+    repository = GroceryItemRepository(db)
+    item = GroceryItem(id=uuid4(), name="Rice", shopping_session_id=uuid4())
+
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        repository.delete(item)
+
+    db.delete.assert_called_once_with(item)
+    db.rollback.assert_called_once_with()

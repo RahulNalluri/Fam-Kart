@@ -26,6 +26,7 @@ from app.services.grocery_items import (
     GroceryItemShoppingSessionNotFoundError,
     complete_grocery_item,
     create_grocery_item,
+    delete_grocery_item,
     list_grocery_items,
     reopen_grocery_item,
     update_grocery_item,
@@ -629,3 +630,112 @@ def test_completed_session_rejects_item_transition(operation: object) -> None:
         )
 
     item_repository.get_for_session_for_update.assert_not_called()
+
+
+@pytest.mark.parametrize("role", [HouseholdRole.OWNER, HouseholdRole.MEMBER])
+def test_current_member_can_delete_pending_item(role: HouseholdRole) -> None:
+    user = build_user()
+    household_id = uuid4()
+    shopping_session = build_session(household_id)
+    item = build_item(shopping_session.id, user.id)
+    member_repository = Mock(spec=HouseholdMemberRepository)
+    member_repository.lock_for_users.return_value = {
+        user.id: build_membership(user.id, household_id, role=role),
+    }
+    session_repository = Mock(spec=ShoppingSessionRepository)
+    session_repository.get_for_household_for_update.return_value = shopping_session
+    item_repository = Mock(spec=GroceryItemRepository)
+    item_repository.get_for_session_for_update.return_value = item
+
+    delete_grocery_item(
+        household_id,
+        shopping_session.id,
+        item.id,
+        user,
+        item_repository,
+        session_repository,
+        member_repository,
+    )
+
+    item_repository.delete.assert_called_once_with(item)
+
+
+def test_outsider_cannot_delete_or_discover_item() -> None:
+    user = build_user()
+    member_repository = Mock(spec=HouseholdMemberRepository)
+    member_repository.lock_for_users.return_value = {}
+    session_repository = Mock(spec=ShoppingSessionRepository)
+    item_repository = Mock(spec=GroceryItemRepository)
+
+    with pytest.raises(GroceryItemNotFoundError):
+        delete_grocery_item(
+            uuid4(),
+            uuid4(),
+            uuid4(),
+            user,
+            item_repository,
+            session_repository,
+            member_repository,
+        )
+
+    session_repository.get_for_household_for_update.assert_not_called()
+    item_repository.delete.assert_not_called()
+
+
+def test_completed_session_rejects_item_deletion() -> None:
+    user = build_user()
+    household_id = uuid4()
+    shopping_session = build_session(
+        household_id,
+        status=ShoppingSessionStatus.COMPLETED,
+    )
+    member_repository = Mock(spec=HouseholdMemberRepository)
+    member_repository.lock_for_users.return_value = {
+        user.id: build_membership(user.id, household_id),
+    }
+    session_repository = Mock(spec=ShoppingSessionRepository)
+    session_repository.get_for_household_for_update.return_value = shopping_session
+    item_repository = Mock(spec=GroceryItemRepository)
+
+    with pytest.raises(GroceryItemShoppingSessionCompletedError):
+        delete_grocery_item(
+            household_id,
+            shopping_session.id,
+            uuid4(),
+            user,
+            item_repository,
+            session_repository,
+            member_repository,
+        )
+
+    item_repository.get_for_session_for_update.assert_not_called()
+    item_repository.delete.assert_not_called()
+
+
+def test_completed_item_must_be_reopened_before_deletion() -> None:
+    user = build_user()
+    household_id = uuid4()
+    shopping_session = build_session(household_id)
+    item = build_item(shopping_session.id, user.id)
+    item.status = GroceryItemStatus.COMPLETED
+    member_repository = Mock(spec=HouseholdMemberRepository)
+    member_repository.lock_for_users.return_value = {
+        user.id: build_membership(user.id, household_id),
+    }
+    session_repository = Mock(spec=ShoppingSessionRepository)
+    session_repository.get_for_household_for_update.return_value = shopping_session
+    item_repository = Mock(spec=GroceryItemRepository)
+    item_repository.get_for_session_for_update.return_value = item
+
+    with pytest.raises(GroceryItemCompletedError):
+        delete_grocery_item(
+            household_id,
+            shopping_session.id,
+            item.id,
+            user,
+            item_repository,
+            session_repository,
+            member_repository,
+        )
+
+    item_repository.delete.assert_not_called()

@@ -158,6 +158,14 @@ class GroceryItemRepository:
             return current
         raise GroceryItemTransitionError
 
+    def delete(self, item: GroceryItem) -> None:
+        self.db.delete(item)
+        try:
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
+
     def list_for_session(self, shopping_session_id: UUID) -> list[GroceryItem]:
         statement = (
             select(GroceryItem)

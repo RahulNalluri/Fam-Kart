@@ -999,3 +999,178 @@ def test_item_transition_rejects_malformed_item_id(
 
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "validation_error"
+
+
+@pytest.mark.parametrize(
+    ("role", "email"),
+    [
+        (HouseholdRole.OWNER, "grocery-delete-owner@example.com"),
+        (HouseholdRole.MEMBER, "grocery-delete-member@example.com"),
+    ],
+)
+def test_household_member_can_permanently_delete_pending_item(
+    client: TestClient,
+    db_session: Session,
+    role: HouseholdRole,
+    email: str,
+) -> None:
+    member = create_user(db_session, email=email)
+    household = create_household(db_session, name=f"Delete Grocery {role.value}")
+    add_membership(db_session, household=household, user=member, role=role)
+    shopping_session = create_shopping_session(
+        db_session,
+        household=household,
+        creator=member,
+    )
+    item = create_grocery_item(
+        db_session,
+        shopping_session=shopping_session,
+        creator=member,
+    )
+    item_id = item.id
+
+    response = client.delete(
+        item_url(household.id, shopping_session.id, item_id),
+        headers=authorization_header(member),
+    )
+
+    assert response.status_code == 204
+    assert response.content == b""
+    assert db_session.get(GroceryItem, item_id) is None
+
+    listed = client.get(
+        collection_url(household.id, shopping_session.id),
+        headers=authorization_header(member),
+    )
+    assert listed.status_code == 200
+    assert listed.json() == []
+
+
+def test_outsider_cannot_delete_or_discover_item(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    member = create_user(db_session, email="grocery-delete-private@example.com")
+    outsider = create_user(db_session, email="grocery-delete-outsider@example.com")
+    household = create_household(db_session, name="Private Grocery Delete")
+    add_membership(
+        db_session,
+        household=household,
+        user=member,
+        role=HouseholdRole.MEMBER,
+    )
+    shopping_session = create_shopping_session(
+        db_session,
+        household=household,
+        creator=member,
+    )
+    item = create_grocery_item(
+        db_session,
+        shopping_session=shopping_session,
+        creator=member,
+    )
+
+    response = client.delete(
+        item_url(household.id, shopping_session.id, item.id),
+        headers=authorization_header(outsider),
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["message"] == (
+        "This grocery item could not be found or you do not have access to it."
+    )
+    assert db_session.get(GroceryItem, item.id) is not None
+
+
+def test_completed_item_must_be_reopened_before_deletion(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    member = create_user(db_session, email="grocery-delete-completed@example.com")
+    household = create_household(db_session, name="Completed Grocery Delete")
+    add_membership(
+        db_session,
+        household=household,
+        user=member,
+        role=HouseholdRole.MEMBER,
+    )
+    shopping_session = create_shopping_session(
+        db_session,
+        household=household,
+        creator=member,
+    )
+    item = create_grocery_item(
+        db_session,
+        shopping_session=shopping_session,
+        creator=member,
+        status=GroceryItemStatus.COMPLETED,
+    )
+
+    response = client.delete(
+        item_url(household.id, shopping_session.id, item.id),
+        headers=authorization_header(member),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["message"] == (
+        "Reopen this grocery item before deleting it."
+    )
+    assert db_session.get(GroceryItem, item.id) is not None
+
+
+def test_completed_session_rejects_item_deletion(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    member = create_user(db_session, email="grocery-delete-locked@example.com")
+    household = create_household(db_session, name="Locked Grocery Delete")
+    add_membership(
+        db_session,
+        household=household,
+        user=member,
+        role=HouseholdRole.MEMBER,
+    )
+    shopping_session = create_shopping_session(
+        db_session,
+        household=household,
+        creator=member,
+        status=ShoppingSessionStatus.COMPLETED,
+    )
+    item = create_grocery_item(
+        db_session,
+        shopping_session=shopping_session,
+        creator=member,
+    )
+
+    response = client.delete(
+        item_url(household.id, shopping_session.id, item.id),
+        headers=authorization_header(member),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["message"] == (
+        "You cannot delete items because this shopping session is already completed."
+    )
+    assert db_session.get(GroceryItem, item.id) is not None
+
+
+def test_delete_item_requires_authentication(client: TestClient) -> None:
+    response = client.delete(item_url(uuid4(), uuid4(), uuid4()))
+
+    assert response.status_code == 401
+    assert response.json()["error"]["message"] == "Please log in again to continue."
+
+
+def test_delete_item_rejects_malformed_item_id(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    member = create_user(db_session, email="grocery-delete-malformed@example.com")
+
+    response = client.delete(
+        item_url(uuid4(), uuid4(), "not-a-uuid"),
+        headers=authorization_header(member),
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
