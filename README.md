@@ -84,6 +84,10 @@ future repository or API operation receives the data.
 The grocery-item repository persists pending items, scopes individual lookups to
 their shopping session, lists pending items before completed items, and rolls
 back failed writes.
+The grocery-item service permits current household members to add items only to
+active sessions, validates that assignees belong to the same household, protects
+session completion races with row locking, and keeps completed-session lists
+available as history.
 
 ## Quick Start
 

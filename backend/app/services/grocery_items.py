@@ -1,0 +1,91 @@
+from uuid import UUID
+
+from app.models.grocery_item import GroceryItem
+from app.models.shopping_session import ShoppingSessionStatus
+from app.models.user import User
+from app.repositories.grocery_items import GroceryItemRepository
+from app.repositories.household_members import HouseholdMemberRepository
+from app.repositories.shopping_sessions import ShoppingSessionRepository
+from app.schemas.grocery_items import CreateGroceryItemRequest
+
+
+class GroceryItemShoppingSessionNotFoundError(ValueError):
+    pass
+
+
+class GroceryItemShoppingSessionCompletedError(ValueError):
+    pass
+
+
+class GroceryItemAssigneeNotFoundError(ValueError):
+    pass
+
+
+def create_grocery_item(
+    household_id: UUID,
+    session_id: UUID,
+    data: CreateGroceryItemRequest,
+    user: User,
+    item_repository: GroceryItemRepository,
+    session_repository: ShoppingSessionRepository,
+    member_repository: HouseholdMemberRepository,
+) -> GroceryItem:
+    user_ids = {user.id}
+    if data.assigned_to_user_id is not None:
+        user_ids.add(data.assigned_to_user_id)
+
+    memberships = member_repository.lock_for_users(
+        household_id=household_id,
+        user_ids=user_ids,
+    )
+    if user.id not in memberships:
+        raise GroceryItemShoppingSessionNotFoundError
+    if (
+        data.assigned_to_user_id is not None
+        and data.assigned_to_user_id not in memberships
+    ):
+        raise GroceryItemAssigneeNotFoundError
+
+    shopping_session = session_repository.get_for_household_for_update(
+        session_id=session_id,
+        household_id=household_id,
+    )
+    if shopping_session is None:
+        raise GroceryItemShoppingSessionNotFoundError
+    if shopping_session.status != ShoppingSessionStatus.ACTIVE:
+        raise GroceryItemShoppingSessionCompletedError
+
+    return item_repository.create(
+        shopping_session_id=shopping_session.id,
+        name=data.name,
+        quantity=data.quantity,
+        unit=data.unit,
+        notes=data.notes,
+        created_by_user_id=user.id,
+        assigned_to_user_id=data.assigned_to_user_id,
+    )
+
+
+def list_grocery_items(
+    household_id: UUID,
+    session_id: UUID,
+    user: User,
+    item_repository: GroceryItemRepository,
+    session_repository: ShoppingSessionRepository,
+    member_repository: HouseholdMemberRepository,
+) -> list[GroceryItem]:
+    membership = member_repository.get_for_user_and_household(
+        user_id=user.id,
+        household_id=household_id,
+    )
+    if membership is None:
+        raise GroceryItemShoppingSessionNotFoundError
+
+    shopping_session = session_repository.get_for_household(
+        session_id=session_id,
+        household_id=household_id,
+    )
+    if shopping_session is None:
+        raise GroceryItemShoppingSessionNotFoundError
+
+    return item_repository.list_for_session(shopping_session.id)

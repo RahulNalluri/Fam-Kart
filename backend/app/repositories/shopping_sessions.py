@@ -69,6 +69,22 @@ class ShoppingSessionRepository:
         )
         return self.db.execute(statement).scalar_one_or_none()
 
+    def get_for_household_for_update(
+        self,
+        *,
+        session_id: UUID,
+        household_id: UUID,
+    ) -> ShoppingSession | None:
+        statement = (
+            select(ShoppingSession)
+            .where(
+                ShoppingSession.id == session_id,
+                ShoppingSession.household_id == household_id,
+            )
+            .with_for_update()
+        )
+        return self.db.execute(statement).scalar_one_or_none()
+
     def list_for_household(self, household_id: UUID) -> list[ShoppingSession]:
         statement = (
             select(ShoppingSession)

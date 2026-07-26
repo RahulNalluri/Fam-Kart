@@ -91,6 +91,36 @@ def test_repository_scopes_session_lookup_to_household() -> None:
         db.close()
 
 
+def test_repository_locks_session_lookup_within_household() -> None:
+    db = create_test_session()
+    try:
+        user = create_user(db, email="session-lock-scope@example.com")
+        household = create_household(db, name="Session Lock Scope Family")
+        other_household = create_household(db, name="Other Lock Scope Family")
+        repository = ShoppingSessionRepository(db)
+        created = repository.create(
+            household_id=household.id,
+            created_by_user_id=user.id,
+        )
+
+        assert (
+            repository.get_for_household_for_update(
+                session_id=created.id,
+                household_id=household.id,
+            )
+            is not None
+        )
+        assert (
+            repository.get_for_household_for_update(
+                session_id=created.id,
+                household_id=other_household.id,
+            )
+            is None
+        )
+    finally:
+        db.close()
+
+
 def test_repository_lists_only_one_households_sessions_newest_first() -> None:
     db = create_test_session()
     try:
