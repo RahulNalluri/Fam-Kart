@@ -54,6 +54,32 @@ class GroceryItemRepository:
         )
         return self.db.execute(statement).scalar_one_or_none()
 
+    def get_for_session_for_update(
+        self,
+        *,
+        item_id: UUID,
+        shopping_session_id: UUID,
+    ) -> GroceryItem | None:
+        statement = (
+            select(GroceryItem)
+            .where(
+                GroceryItem.id == item_id,
+                GroceryItem.shopping_session_id == shopping_session_id,
+            )
+            .with_for_update()
+        )
+        return self.db.execute(statement).scalar_one_or_none()
+
+    def update(self, item: GroceryItem) -> GroceryItem:
+        try:
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
+
+        self.db.refresh(item)
+        return item
+
     def list_for_session(self, shopping_session_id: UUID) -> list[GroceryItem]:
         statement = (
             select(GroceryItem)

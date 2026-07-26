@@ -6,7 +6,11 @@ import pytest
 from pydantic import ValidationError
 
 from app.models import GroceryItem, GroceryItemStatus
-from app.schemas.grocery_items import CreateGroceryItemRequest, GroceryItemResponse
+from app.schemas.grocery_items import (
+    CreateGroceryItemRequest,
+    GroceryItemResponse,
+    UpdateGroceryItemRequest,
+)
 
 
 def test_create_request_normalizes_multilingual_item_fields() -> None:
@@ -112,3 +116,58 @@ def test_response_validates_from_grocery_item_model() -> None:
         "updated_at",
         "completed_at",
     }
+
+
+def test_update_request_normalizes_only_supplied_fields() -> None:
+    assignee_id = uuid4()
+
+    request = UpdateGroceryItemRequest(
+        name="  Brown rice  ",
+        quantity="2.500",
+        unit=" kg ",
+        notes="   ",
+        assigned_to_user_id=assignee_id,
+    )
+
+    assert request.model_dump(exclude_unset=True) == {
+        "name": "Brown rice",
+        "quantity": Decimal("2.500"),
+        "unit": "kg",
+        "notes": None,
+        "assigned_to_user_id": assignee_id,
+    }
+
+
+def test_update_request_can_clear_optional_fields() -> None:
+    request = UpdateGroceryItemRequest(
+        quantity=None,
+        unit=None,
+        notes=None,
+        assigned_to_user_id=None,
+    )
+
+    assert request.model_dump(exclude_unset=True) == {
+        "quantity": None,
+        "unit": None,
+        "notes": None,
+        "assigned_to_user_id": None,
+    }
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"name": None},
+        {"name": "   "},
+        {"quantity": 0},
+        {"quantity": True},
+        {"status": "completed"},
+        {"created_by_user_id": str(uuid4())},
+    ],
+)
+def test_update_request_rejects_empty_invalid_or_server_managed_fields(
+    payload: dict[str, object],
+) -> None:
+    with pytest.raises(ValidationError):
+        UpdateGroceryItemRequest.model_validate(payload)

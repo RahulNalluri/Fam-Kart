@@ -120,6 +120,37 @@ def collection_url(household_id: object, session_id: object) -> str:
     return f"/api/v1/households/{household_id}/shopping-sessions/{session_id}/items"
 
 
+def item_url(household_id: object, session_id: object, item_id: object) -> str:
+    return f"{collection_url(household_id, session_id)}/{item_id}"
+
+
+def create_grocery_item(
+    db_session: Session,
+    *,
+    shopping_session: ShoppingSession,
+    creator: User,
+    status: GroceryItemStatus = GroceryItemStatus.PENDING,
+) -> GroceryItem:
+    now = datetime.now(UTC)
+    item = GroceryItem(
+        shopping_session_id=shopping_session.id,
+        name="Rice",
+        quantity=Decimal("5.000"),
+        unit="kg",
+        notes="Original note",
+        status=status,
+        created_by_user_id=creator.id,
+        completed_by_user_id=(
+            creator.id if status == GroceryItemStatus.COMPLETED else None
+        ),
+        completed_at=now if status == GroceryItemStatus.COMPLETED else None,
+    )
+    db_session.add(item)
+    db_session.commit()
+    db_session.refresh(item)
+    return item
+
+
 @pytest.mark.parametrize(
     ("role", "email"),
     [
@@ -466,6 +497,301 @@ def test_grocery_item_endpoints_reject_malformed_ids(
     user = create_user(db_session, email=f"malformed-item-{uuid4()}@example.com")
 
     response = client.get(url, headers=authorization_header(user))
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
+
+
+@pytest.mark.parametrize(
+    ("role", "email"),
+    [
+        (HouseholdRole.OWNER, "grocery-edit-owner@example.com"),
+        (HouseholdRole.MEMBER, "grocery-edit-member@example.com"),
+    ],
+)
+def test_household_member_can_edit_pending_item(
+    client: TestClient,
+    db_session: Session,
+    role: HouseholdRole,
+    email: str,
+) -> None:
+    editor = create_user(db_session, email=email)
+    assignee = create_user(db_session, email=f"assignee-{email}")
+    household = create_household(db_session, name=f"Editable {role.value}")
+    add_membership(db_session, household=household, user=editor, role=role)
+    add_membership(
+        db_session,
+        household=household,
+        user=assignee,
+        role=HouseholdRole.MEMBER,
+    )
+    shopping_session = create_shopping_session(
+        db_session,
+        household=household,
+        creator=editor,
+    )
+    item = create_grocery_item(
+        db_session,
+        shopping_session=shopping_session,
+        creator=editor,
+    )
+
+    response = client.patch(
+        item_url(household.id, shopping_session.id, item.id),
+        headers=authorization_header(editor),
+        json={
+            "name": "  Brown rice  ",
+            "quantity": "2.500",
+            "unit": " packet ",
+            "notes": " Updated note ",
+            "assigned_to_user_id": str(assignee.id),
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["name"] == "Brown rice"
+    assert Decimal(payload["quantity"]) == Decimal("2.500")
+    assert payload["unit"] == "packet"
+    assert payload["notes"] == "Updated note"
+    assert payload["assigned_to_user_id"] == str(assignee.id)
+    assert payload["created_by_user_id"] == str(editor.id)
+    assert payload["status"] == "pending"
+
+    db_session.expire_all()
+    persisted = db_session.get(GroceryItem, item.id)
+    assert persisted is not None
+    assert persisted.name == "Brown rice"
+    assert persisted.assigned_to_user_id == assignee.id
+
+
+def test_edit_can_clear_optional_fields_without_changing_name(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    member = create_user(db_session, email="grocery-edit-clear@example.com")
+    household = create_household(db_session, name="Clear Grocery Fields")
+    add_membership(
+        db_session,
+        household=household,
+        user=member,
+        role=HouseholdRole.MEMBER,
+    )
+    shopping_session = create_shopping_session(
+        db_session,
+        household=household,
+        creator=member,
+    )
+    item = create_grocery_item(
+        db_session,
+        shopping_session=shopping_session,
+        creator=member,
+    )
+    item.assigned_to_user_id = member.id
+    db_session.commit()
+
+    response = client.patch(
+        item_url(household.id, shopping_session.id, item.id),
+        headers=authorization_header(member),
+        json={
+            "quantity": None,
+            "unit": None,
+            "notes": None,
+            "assigned_to_user_id": None,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["name"] == "Rice"
+    assert payload["quantity"] is None
+    assert payload["unit"] is None
+    assert payload["notes"] is None
+    assert payload["assigned_to_user_id"] is None
+
+
+def test_edit_rejects_assignee_outside_household(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    member = create_user(db_session, email="grocery-edit-assigner@example.com")
+    outsider = create_user(db_session, email="grocery-edit-outsider@example.com")
+    household = create_household(db_session, name="Private Grocery Edit")
+    add_membership(
+        db_session,
+        household=household,
+        user=member,
+        role=HouseholdRole.MEMBER,
+    )
+    shopping_session = create_shopping_session(
+        db_session,
+        household=household,
+        creator=member,
+    )
+    item = create_grocery_item(
+        db_session,
+        shopping_session=shopping_session,
+        creator=member,
+    )
+
+    response = client.patch(
+        item_url(household.id, shopping_session.id, item.id),
+        headers=authorization_header(member),
+        json={"assigned_to_user_id": str(outsider.id)},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["message"] == (
+        "The selected person is not a member of this household."
+    )
+
+
+def test_outsider_cannot_edit_or_discover_item(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    member = create_user(db_session, email="grocery-edit-private@example.com")
+    outsider = create_user(db_session, email="grocery-edit-denied@example.com")
+    household = create_household(db_session, name="Hidden Grocery Edit")
+    add_membership(
+        db_session,
+        household=household,
+        user=member,
+        role=HouseholdRole.OWNER,
+    )
+    shopping_session = create_shopping_session(
+        db_session,
+        household=household,
+        creator=member,
+    )
+    item = create_grocery_item(
+        db_session,
+        shopping_session=shopping_session,
+        creator=member,
+    )
+
+    response = client.patch(
+        item_url(household.id, shopping_session.id, item.id),
+        headers=authorization_header(outsider),
+        json={"name": "Hidden update"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["message"] == (
+        "This grocery item could not be found or you do not have access to it."
+    )
+
+
+@pytest.mark.parametrize(
+    ("session_status", "item_status", "expected_message"),
+    [
+        (
+            ShoppingSessionStatus.COMPLETED,
+            GroceryItemStatus.PENDING,
+            "You cannot edit items because this shopping session is already completed.",
+        ),
+        (
+            ShoppingSessionStatus.ACTIVE,
+            GroceryItemStatus.COMPLETED,
+            "Reopen this grocery item before editing it.",
+        ),
+    ],
+)
+def test_edit_rejects_completed_session_or_item(
+    client: TestClient,
+    db_session: Session,
+    session_status: ShoppingSessionStatus,
+    item_status: GroceryItemStatus,
+    expected_message: str,
+) -> None:
+    member = create_user(
+        db_session,
+        email=f"grocery-edit-{session_status.value}-{item_status.value}@example.com",
+    )
+    household = create_household(
+        db_session,
+        name=f"Locked {session_status.value} {item_status.value}",
+    )
+    add_membership(
+        db_session,
+        household=household,
+        user=member,
+        role=HouseholdRole.MEMBER,
+    )
+    shopping_session = create_shopping_session(
+        db_session,
+        household=household,
+        creator=member,
+        status=session_status,
+    )
+    item = create_grocery_item(
+        db_session,
+        shopping_session=shopping_session,
+        creator=member,
+        status=item_status,
+    )
+
+    response = client.patch(
+        item_url(household.id, shopping_session.id, item.id),
+        headers=authorization_header(member),
+        json={"name": "Blocked edit"},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["message"] == expected_message
+
+
+def test_edit_requires_authentication(client: TestClient) -> None:
+    response = client.patch(
+        item_url(uuid4(), uuid4(), uuid4()),
+        json={"name": "Rice"},
+    )
+
+    assert response.status_code == 401
+    assert response.json()["error"]["message"] == "Please log in again to continue."
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"name": None},
+        {"name": "   "},
+        {"quantity": 0},
+        {"status": "completed"},
+    ],
+)
+def test_edit_rejects_invalid_input(
+    client: TestClient,
+    db_session: Session,
+    payload: dict[str, object],
+) -> None:
+    member = create_user(
+        db_session, email=f"grocery-edit-invalid-{uuid4()}@example.com"
+    )
+    household = create_household(db_session, name=f"Invalid Grocery Edit {uuid4()}")
+    add_membership(
+        db_session,
+        household=household,
+        user=member,
+        role=HouseholdRole.MEMBER,
+    )
+    shopping_session = create_shopping_session(
+        db_session,
+        household=household,
+        creator=member,
+    )
+    item = create_grocery_item(
+        db_session,
+        shopping_session=shopping_session,
+        creator=member,
+    )
+
+    response = client.patch(
+        item_url(household.id, shopping_session.id, item.id),
+        headers=authorization_header(member),
+        json=payload,
+    )
 
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "validation_error"

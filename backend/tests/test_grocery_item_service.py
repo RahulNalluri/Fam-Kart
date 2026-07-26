@@ -6,6 +6,7 @@ import pytest
 
 from app.models import (
     GroceryItem,
+    GroceryItemStatus,
     HouseholdMember,
     HouseholdRole,
     ShoppingSession,
@@ -15,13 +16,16 @@ from app.models import (
 from app.repositories.grocery_items import GroceryItemRepository
 from app.repositories.household_members import HouseholdMemberRepository
 from app.repositories.shopping_sessions import ShoppingSessionRepository
-from app.schemas.grocery_items import CreateGroceryItemRequest
+from app.schemas.grocery_items import CreateGroceryItemRequest, UpdateGroceryItemRequest
 from app.services.grocery_items import (
     GroceryItemAssigneeNotFoundError,
+    GroceryItemCompletedError,
+    GroceryItemNotFoundError,
     GroceryItemShoppingSessionCompletedError,
     GroceryItemShoppingSessionNotFoundError,
     create_grocery_item,
     list_grocery_items,
+    update_grocery_item,
 )
 
 
@@ -66,6 +70,7 @@ def build_item(session_id: UUID, user_id: UUID) -> GroceryItem:
         id=uuid4(),
         shopping_session_id=session_id,
         name="Rice",
+        status=GroceryItemStatus.PENDING,
         created_by_user_id=user_id,
     )
 
@@ -310,3 +315,194 @@ def test_outsider_or_unknown_session_cannot_list_items(
         session_repository.get_for_household.assert_called_once()
     else:
         session_repository.get_for_household.assert_not_called()
+
+
+@pytest.mark.parametrize("role", [HouseholdRole.OWNER, HouseholdRole.MEMBER])
+def test_current_member_can_update_pending_item(role: HouseholdRole) -> None:
+    user = build_user()
+    assignee = build_user()
+    household_id = uuid4()
+    shopping_session = build_session(household_id)
+    item = build_item(shopping_session.id, user.id)
+    data = UpdateGroceryItemRequest(
+        name="Brown rice",
+        quantity=Decimal("2.500"),
+        assigned_to_user_id=assignee.id,
+    )
+    member_repository = Mock(spec=HouseholdMemberRepository)
+    member_repository.lock_for_users.side_effect = [
+        {user.id: build_membership(user.id, household_id, role=role)},
+        {assignee.id: build_membership(assignee.id, household_id)},
+    ]
+    session_repository = Mock(spec=ShoppingSessionRepository)
+    session_repository.get_for_household_for_update.return_value = shopping_session
+    item_repository = Mock(spec=GroceryItemRepository)
+    item_repository.get_for_session_for_update.return_value = item
+    item_repository.update.return_value = item
+
+    result = update_grocery_item(
+        household_id,
+        shopping_session.id,
+        item.id,
+        data,
+        user,
+        item_repository,
+        session_repository,
+        member_repository,
+    )
+
+    assert result is item
+    assert item.name == "Brown rice"
+    assert item.quantity == Decimal("2.500")
+    assert item.assigned_to_user_id == assignee.id
+    item_repository.update.assert_called_once_with(item)
+
+
+def test_update_can_clear_optional_item_fields() -> None:
+    user = build_user()
+    household_id = uuid4()
+    shopping_session = build_session(household_id)
+    item = build_item(shopping_session.id, user.id)
+    item.quantity = Decimal("5")
+    item.unit = "kg"
+    item.notes = "Old note"
+    item.assigned_to_user_id = user.id
+    member_repository = Mock(spec=HouseholdMemberRepository)
+    member_repository.lock_for_users.return_value = {
+        user.id: build_membership(user.id, household_id),
+    }
+    session_repository = Mock(spec=ShoppingSessionRepository)
+    session_repository.get_for_household_for_update.return_value = shopping_session
+    item_repository = Mock(spec=GroceryItemRepository)
+    item_repository.get_for_session_for_update.return_value = item
+    item_repository.update.return_value = item
+
+    update_grocery_item(
+        household_id,
+        shopping_session.id,
+        item.id,
+        UpdateGroceryItemRequest(
+            quantity=None,
+            unit=None,
+            notes=None,
+            assigned_to_user_id=None,
+        ),
+        user,
+        item_repository,
+        session_repository,
+        member_repository,
+    )
+
+    assert item.quantity is None
+    assert item.unit is None
+    assert item.notes is None
+    assert item.assigned_to_user_id is None
+
+
+def test_outsider_cannot_update_or_discover_item() -> None:
+    user = build_user()
+    member_repository = Mock(spec=HouseholdMemberRepository)
+    member_repository.lock_for_users.return_value = {}
+    session_repository = Mock(spec=ShoppingSessionRepository)
+    item_repository = Mock(spec=GroceryItemRepository)
+
+    with pytest.raises(GroceryItemNotFoundError):
+        update_grocery_item(
+            uuid4(),
+            uuid4(),
+            uuid4(),
+            UpdateGroceryItemRequest(name="Hidden"),
+            user,
+            item_repository,
+            session_repository,
+            member_repository,
+        )
+
+    session_repository.get_for_household_for_update.assert_not_called()
+    item_repository.get_for_session_for_update.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("session_status", "item_status", "expected_error"),
+    [
+        (None, GroceryItemStatus.PENDING, GroceryItemNotFoundError),
+        (
+            ShoppingSessionStatus.COMPLETED,
+            GroceryItemStatus.PENDING,
+            GroceryItemShoppingSessionCompletedError,
+        ),
+        (
+            ShoppingSessionStatus.ACTIVE,
+            GroceryItemStatus.COMPLETED,
+            GroceryItemCompletedError,
+        ),
+    ],
+)
+def test_update_requires_active_session_and_pending_item(
+    session_status: ShoppingSessionStatus | None,
+    item_status: GroceryItemStatus,
+    expected_error: type[ValueError],
+) -> None:
+    user = build_user()
+    household_id = uuid4()
+    session_id = uuid4()
+    member_repository = Mock(spec=HouseholdMemberRepository)
+    member_repository.lock_for_users.return_value = {
+        user.id: build_membership(user.id, household_id),
+    }
+    shopping_session = (
+        build_session(household_id, status=session_status)
+        if session_status is not None
+        else None
+    )
+    session_repository = Mock(spec=ShoppingSessionRepository)
+    session_repository.get_for_household_for_update.return_value = shopping_session
+    item = build_item(session_id, user.id)
+    item.status = item_status
+    item_repository = Mock(spec=GroceryItemRepository)
+    item_repository.get_for_session_for_update.return_value = item
+
+    with pytest.raises(expected_error):
+        update_grocery_item(
+            household_id,
+            session_id,
+            item.id,
+            UpdateGroceryItemRequest(name="Updated"),
+            user,
+            item_repository,
+            session_repository,
+            member_repository,
+        )
+
+    item_repository.update.assert_not_called()
+
+
+def test_update_rejects_assignee_outside_household() -> None:
+    user = build_user()
+    household_id = uuid4()
+    outsider_id = uuid4()
+    shopping_session = build_session(household_id)
+    item = build_item(shopping_session.id, user.id)
+    member_repository = Mock(spec=HouseholdMemberRepository)
+    member_repository.lock_for_users.side_effect = [
+        {user.id: build_membership(user.id, household_id)},
+        {},
+    ]
+    session_repository = Mock(spec=ShoppingSessionRepository)
+    session_repository.get_for_household_for_update.return_value = shopping_session
+    item_repository = Mock(spec=GroceryItemRepository)
+    item_repository.get_for_session_for_update.return_value = item
+
+    with pytest.raises(GroceryItemAssigneeNotFoundError):
+        update_grocery_item(
+            household_id,
+            shopping_session.id,
+            item.id,
+            UpdateGroceryItemRequest(assigned_to_user_id=outsider_id),
+            user,
+            item_repository,
+            session_repository,
+            member_repository,
+        )
+
+    item_repository.update.assert_not_called()

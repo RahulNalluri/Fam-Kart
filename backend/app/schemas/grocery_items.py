@@ -2,7 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.models.grocery_item import GroceryItemStatus
 
@@ -47,6 +47,56 @@ class CreateGroceryItemRequest(BaseModel):
         if isinstance(value, bool):
             raise ValueError("Quantity must be a number.")
         return value
+
+
+class UpdateGroceryItemRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(default=None, min_length=1, max_length=160)
+    quantity: Decimal | None = Field(
+        default=None,
+        gt=0,
+        max_digits=10,
+        decimal_places=3,
+    )
+    unit: str | None = Field(default=None, max_length=32)
+    notes: str | None = Field(default=None, max_length=500)
+    assigned_to_user_id: UUID | None = None
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def normalize_name(cls, value: object) -> object:
+        if value is None:
+            raise ValueError("Grocery item name cannot be null.")
+        if not isinstance(value, str):
+            return value
+
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Grocery item name cannot be blank.")
+        return normalized
+
+    @field_validator("unit", "notes", mode="before")
+    @classmethod
+    def normalize_optional_text(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("quantity", mode="before")
+    @classmethod
+    def reject_boolean_quantity(cls, value: object) -> object:
+        if isinstance(value, bool):
+            raise ValueError("Quantity must be a number.")
+        return value
+
+    @model_validator(mode="after")
+    def require_at_least_one_field(self) -> "UpdateGroceryItemRequest":
+        if not self.model_fields_set:
+            raise ValueError("Provide at least one grocery item field to update.")
+        return self
 
 
 class GroceryItemResponse(BaseModel):

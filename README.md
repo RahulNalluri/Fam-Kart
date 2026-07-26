@@ -91,6 +91,8 @@ available as history.
 Authenticated household members can add and list grocery items through
 `POST /api/v1/households/{household_id}/shopping-sessions/{session_id}/items`
 and `GET /api/v1/households/{household_id}/shopping-sessions/{session_id}/items`.
+Pending items in active sessions can be edited through
+`PATCH /api/v1/households/{household_id}/shopping-sessions/{session_id}/items/{item_id}`.
 
 ## Quick Start
 

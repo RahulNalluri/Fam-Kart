@@ -205,3 +205,76 @@ def test_repository_rolls_back_when_creation_commit_fails() -> None:
 
     db.rollback.assert_called_once_with()
     db.refresh.assert_not_called()
+
+
+def test_repository_updates_and_persists_item_fields() -> None:
+    db = create_test_session()
+    try:
+        user, shopping_session = create_dependencies(db, suffix="update")
+        repository = GroceryItemRepository(db)
+        item = repository.create(
+            shopping_session_id=shopping_session.id,
+            name="Rice",
+            quantity=Decimal("5"),
+            unit="kg",
+            notes=None,
+            created_by_user_id=user.id,
+            assigned_to_user_id=None,
+        )
+
+        locked_item = repository.get_for_session_for_update(
+            item_id=item.id,
+            shopping_session_id=shopping_session.id,
+        )
+        assert locked_item is not None
+        locked_item.name = "Brown rice"
+        locked_item.quantity = Decimal("2.500")
+        locked_item.assigned_to_user_id = user.id
+
+        updated = repository.update(locked_item)
+
+        assert updated.name == "Brown rice"
+        assert updated.quantity == Decimal("2.500")
+        assert updated.assigned_to_user_id == user.id
+    finally:
+        db.close()
+
+
+def test_repository_update_lookup_remains_scoped_to_session() -> None:
+    db = create_test_session()
+    try:
+        user, shopping_session = create_dependencies(db, suffix="update-scope")
+        _, other_session = create_dependencies(db, suffix="other-update-scope")
+        repository = GroceryItemRepository(db)
+        item = repository.create(
+            shopping_session_id=shopping_session.id,
+            name="Rice",
+            quantity=None,
+            unit=None,
+            notes=None,
+            created_by_user_id=user.id,
+            assigned_to_user_id=None,
+        )
+
+        assert (
+            repository.get_for_session_for_update(
+                item_id=item.id,
+                shopping_session_id=other_session.id,
+            )
+            is None
+        )
+    finally:
+        db.close()
+
+
+def test_repository_rolls_back_when_update_commit_fails() -> None:
+    db = Mock(spec=Session)
+    db.commit.side_effect = RuntimeError("database unavailable")
+    repository = GroceryItemRepository(db)
+    item = GroceryItem(name="Rice", shopping_session_id=uuid4())
+
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        repository.update(item)
+
+    db.rollback.assert_called_once_with()
+    db.refresh.assert_not_called()
