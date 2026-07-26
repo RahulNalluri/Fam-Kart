@@ -102,7 +102,7 @@ def test_current_user_rejects_missing_or_invalid_credentials(
 
     assert response.status_code == 401
     assert response.headers["www-authenticate"] == "Bearer"
-    assert response.json()["error"]["message"] == ("Invalid or expired access token.")
+    assert response.json()["error"]["message"] == "Please log in again to continue."
 
 
 def test_current_user_rejects_refresh_token(

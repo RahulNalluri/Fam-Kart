@@ -15,7 +15,7 @@ bearer_scheme = HTTPBearer(auto_error=False)
 def authentication_failed() -> NoReturn:
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid or expired access token.",
+        detail="Please log in again to continue.",
         headers={"WWW-Authenticate": "Bearer"},
     )
 

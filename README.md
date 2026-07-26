@@ -88,6 +88,9 @@ The grocery-item service permits current household members to add items only to
 active sessions, validates that assignees belong to the same household, protects
 session completion races with row locking, and keeps completed-session lists
 available as history.
+Authenticated household members can add and list grocery items through
+`POST /api/v1/households/{household_id}/shopping-sessions/{session_id}/items`
+and `GET /api/v1/households/{household_id}/shopping-sessions/{session_id}/items`.
 
 ## Quick Start
 
