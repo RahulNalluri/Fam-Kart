@@ -21,8 +21,10 @@ from app.services.grocery_items import (
     GroceryItemNotFoundError,
     GroceryItemShoppingSessionCompletedError,
     GroceryItemShoppingSessionNotFoundError,
+    complete_grocery_item,
     create_grocery_item,
     list_grocery_items,
+    reopen_grocery_item,
     update_grocery_item,
 )
 
@@ -152,6 +154,82 @@ def update_current_session_grocery_item(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="The selected person is not a member of this household.",
+        ) from error
+
+    return GroceryItemResponse.model_validate(item)
+
+
+@router.patch("/{item_id}/complete", response_model=GroceryItemResponse)
+def complete_current_session_grocery_item(
+    household_id: UUID,
+    session_id: UUID,
+    item_id: UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> GroceryItemResponse:
+    try:
+        item = complete_grocery_item(
+            household_id,
+            session_id,
+            item_id,
+            current_user,
+            GroceryItemRepository(db),
+            ShoppingSessionRepository(db),
+            HouseholdMemberRepository(db),
+        )
+    except GroceryItemNotFoundError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                "This grocery item could not be found or you do not have access "
+                "to it."
+            ),
+        ) from error
+    except GroceryItemShoppingSessionCompletedError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "You cannot complete items because this shopping session is "
+                "already completed."
+            ),
+        ) from error
+
+    return GroceryItemResponse.model_validate(item)
+
+
+@router.patch("/{item_id}/reopen", response_model=GroceryItemResponse)
+def reopen_current_session_grocery_item(
+    household_id: UUID,
+    session_id: UUID,
+    item_id: UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> GroceryItemResponse:
+    try:
+        item = reopen_grocery_item(
+            household_id,
+            session_id,
+            item_id,
+            current_user,
+            GroceryItemRepository(db),
+            ShoppingSessionRepository(db),
+            HouseholdMemberRepository(db),
+        )
+    except GroceryItemNotFoundError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                "This grocery item could not be found or you do not have access "
+                "to it."
+            ),
+        ) from error
+    except GroceryItemShoppingSessionCompletedError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "You cannot reopen items because this shopping session is already "
+                "completed."
+            ),
         ) from error
 
     return GroceryItemResponse.model_validate(item)

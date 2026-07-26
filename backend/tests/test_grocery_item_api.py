@@ -124,6 +124,15 @@ def item_url(household_id: object, session_id: object, item_id: object) -> str:
     return f"{collection_url(household_id, session_id)}/{item_id}"
 
 
+def transition_url(
+    household_id: object,
+    session_id: object,
+    item_id: object,
+    action: str,
+) -> str:
+    return f"{item_url(household_id, session_id, item_id)}/{action}"
+
+
 def create_grocery_item(
     db_session: Session,
     *,
@@ -791,6 +800,201 @@ def test_edit_rejects_invalid_input(
         item_url(household.id, shopping_session.id, item.id),
         headers=authorization_header(member),
         json=payload,
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
+
+
+def test_household_members_can_complete_and_reopen_item_idempotently(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    owner = create_user(db_session, email="grocery-transition-owner@example.com")
+    member = create_user(db_session, email="grocery-transition-member@example.com")
+    household = create_household(db_session, name="Grocery Transitions")
+    add_membership(
+        db_session,
+        household=household,
+        user=owner,
+        role=HouseholdRole.OWNER,
+    )
+    add_membership(
+        db_session,
+        household=household,
+        user=member,
+        role=HouseholdRole.MEMBER,
+    )
+    shopping_session = create_shopping_session(
+        db_session,
+        household=household,
+        creator=owner,
+    )
+    item = create_grocery_item(
+        db_session,
+        shopping_session=shopping_session,
+        creator=owner,
+    )
+    complete_url = transition_url(
+        household.id,
+        shopping_session.id,
+        item.id,
+        "complete",
+    )
+    reopen_url = transition_url(
+        household.id,
+        shopping_session.id,
+        item.id,
+        "reopen",
+    )
+
+    completed = client.patch(complete_url, headers=authorization_header(member))
+    repeated_complete = client.patch(
+        complete_url,
+        headers=authorization_header(owner),
+    )
+
+    assert completed.status_code == 200
+    assert completed.json()["status"] == "completed"
+    assert completed.json()["completed_by_user_id"] == str(member.id)
+    assert completed.json()["completed_at"] is not None
+    assert repeated_complete.status_code == 200
+    assert repeated_complete.json()["completed_by_user_id"] == str(member.id)
+    assert repeated_complete.json()["completed_at"] == completed.json()["completed_at"]
+
+    reopened = client.patch(reopen_url, headers=authorization_header(owner))
+    repeated_reopen = client.patch(
+        reopen_url,
+        headers=authorization_header(member),
+    )
+
+    assert reopened.status_code == 200
+    assert reopened.json()["status"] == "pending"
+    assert reopened.json()["completed_by_user_id"] is None
+    assert reopened.json()["completed_at"] is None
+    assert repeated_reopen.status_code == 200
+    assert repeated_reopen.json()["status"] == "pending"
+    assert repeated_reopen.json()["completed_by_user_id"] is None
+    assert repeated_reopen.json()["completed_at"] is None
+
+
+@pytest.mark.parametrize("action", ["complete", "reopen"])
+def test_outsider_cannot_transition_or_discover_item(
+    client: TestClient,
+    db_session: Session,
+    action: str,
+) -> None:
+    member = create_user(db_session, email=f"transition-member-{action}@example.com")
+    outsider = create_user(
+        db_session,
+        email=f"transition-outsider-{action}@example.com",
+    )
+    household = create_household(db_session, name=f"Private Transition {action}")
+    add_membership(
+        db_session,
+        household=household,
+        user=member,
+        role=HouseholdRole.MEMBER,
+    )
+    shopping_session = create_shopping_session(
+        db_session,
+        household=household,
+        creator=member,
+    )
+    item = create_grocery_item(
+        db_session,
+        shopping_session=shopping_session,
+        creator=member,
+    )
+
+    response = client.patch(
+        transition_url(household.id, shopping_session.id, item.id, action),
+        headers=authorization_header(outsider),
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["message"] == (
+        "This grocery item could not be found or you do not have access to it."
+    )
+
+
+@pytest.mark.parametrize(
+    ("action", "expected_message"),
+    [
+        (
+            "complete",
+            "You cannot complete items because this shopping session is already "
+            "completed.",
+        ),
+        (
+            "reopen",
+            "You cannot reopen items because this shopping session is already "
+            "completed.",
+        ),
+    ],
+)
+def test_completed_session_rejects_item_transition(
+    client: TestClient,
+    db_session: Session,
+    action: str,
+    expected_message: str,
+) -> None:
+    member = create_user(db_session, email=f"locked-transition-{action}@example.com")
+    household = create_household(db_session, name=f"Locked Transition {action}")
+    add_membership(
+        db_session,
+        household=household,
+        user=member,
+        role=HouseholdRole.MEMBER,
+    )
+    shopping_session = create_shopping_session(
+        db_session,
+        household=household,
+        creator=member,
+        status=ShoppingSessionStatus.COMPLETED,
+    )
+    item = create_grocery_item(
+        db_session,
+        shopping_session=shopping_session,
+        creator=member,
+    )
+
+    response = client.patch(
+        transition_url(household.id, shopping_session.id, item.id, action),
+        headers=authorization_header(member),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["message"] == expected_message
+
+
+@pytest.mark.parametrize("action", ["complete", "reopen"])
+def test_item_transition_requires_authentication(
+    client: TestClient,
+    action: str,
+) -> None:
+    response = client.patch(
+        transition_url(uuid4(), uuid4(), uuid4(), action),
+    )
+
+    assert response.status_code == 401
+    assert response.json()["error"]["message"] == "Please log in again to continue."
+
+
+@pytest.mark.parametrize("action", ["complete", "reopen"])
+def test_item_transition_rejects_malformed_item_id(
+    client: TestClient,
+    db_session: Session,
+    action: str,
+) -> None:
+    member = create_user(
+        db_session,
+        email=f"malformed-transition-{action}@example.com",
+    )
+
+    response = client.patch(
+        transition_url(uuid4(), uuid4(), "not-a-uuid", action),
+        headers=authorization_header(member),
     )
 
     assert response.status_code == 422

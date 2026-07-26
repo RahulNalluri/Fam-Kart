@@ -93,6 +93,9 @@ Authenticated household members can add and list grocery items through
 and `GET /api/v1/households/{household_id}/shopping-sessions/{session_id}/items`.
 Pending items in active sessions can be edited through
 `PATCH /api/v1/households/{household_id}/shopping-sessions/{session_id}/items/{item_id}`.
+Household members can idempotently complete or reopen items in an active session
+through the corresponding `.../items/{item_id}/complete` and
+`.../items/{item_id}/reopen` PATCH endpoints.
 
 ## Quick Start
 

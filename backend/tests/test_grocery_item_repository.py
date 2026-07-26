@@ -278,3 +278,113 @@ def test_repository_rolls_back_when_update_commit_fails() -> None:
 
     db.rollback.assert_called_once_with()
     db.refresh.assert_not_called()
+
+
+def test_repository_completes_pending_item_with_actor_and_timestamp() -> None:
+    db = create_test_session()
+    try:
+        user, shopping_session = create_dependencies(db, suffix="complete")
+        repository = GroceryItemRepository(db)
+        item = repository.create(
+            shopping_session_id=shopping_session.id,
+            name="Rice",
+            quantity=None,
+            unit=None,
+            notes=None,
+            created_by_user_id=user.id,
+            assigned_to_user_id=None,
+        )
+        completed_at = datetime.now(UTC).replace(microsecond=0)
+
+        completed = repository.complete(
+            item,
+            completed_by_user_id=user.id,
+            completed_at=completed_at,
+        )
+
+        assert completed.status == GroceryItemStatus.COMPLETED
+        assert completed.completed_by_user_id == user.id
+        assert completed.completed_at is not None
+        assert completed.completed_at.replace(tzinfo=UTC) == completed_at
+    finally:
+        db.close()
+
+
+def test_repository_complete_is_idempotent_and_preserves_original_details() -> None:
+    db = create_test_session()
+    try:
+        user, shopping_session = create_dependencies(db, suffix="complete-repeat")
+        other_user, _ = create_dependencies(db, suffix="complete-repeat-other")
+        repository = GroceryItemRepository(db)
+        item = repository.create(
+            shopping_session_id=shopping_session.id,
+            name="Milk",
+            quantity=None,
+            unit=None,
+            notes=None,
+            created_by_user_id=user.id,
+            assigned_to_user_id=None,
+        )
+        original_time = datetime.now(UTC).replace(microsecond=0)
+        repository.complete(
+            item,
+            completed_by_user_id=user.id,
+            completed_at=original_time,
+        )
+
+        repeated = repository.complete(
+            item,
+            completed_by_user_id=other_user.id,
+            completed_at=original_time + timedelta(minutes=5),
+        )
+
+        assert repeated.completed_by_user_id == user.id
+        assert repeated.completed_at is not None
+        assert repeated.completed_at.replace(tzinfo=UTC) == original_time
+    finally:
+        db.close()
+
+
+def test_repository_reopens_completed_item_and_is_idempotent() -> None:
+    db = create_test_session()
+    try:
+        user, shopping_session = create_dependencies(db, suffix="reopen")
+        repository = GroceryItemRepository(db)
+        item = repository.create(
+            shopping_session_id=shopping_session.id,
+            name="Milk",
+            quantity=None,
+            unit=None,
+            notes=None,
+            created_by_user_id=user.id,
+            assigned_to_user_id=None,
+        )
+        repository.complete(item, completed_by_user_id=user.id)
+
+        reopened = repository.reopen(item)
+        repeated = repository.reopen(reopened)
+
+        assert repeated.status == GroceryItemStatus.PENDING
+        assert repeated.completed_by_user_id is None
+        assert repeated.completed_at is None
+    finally:
+        db.close()
+
+
+@pytest.mark.parametrize("operation", ["complete", "reopen"])
+def test_repository_rolls_back_when_transition_execution_fails(
+    operation: str,
+) -> None:
+    db = Mock(spec=Session)
+    db.execute.side_effect = RuntimeError("database unavailable")
+    repository = GroceryItemRepository(db)
+    item = GroceryItem(id=uuid4(), name="Rice", shopping_session_id=uuid4())
+
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        if operation == "complete":
+            repository.complete(item, completed_by_user_id=uuid4())
+        else:
+            repository.reopen(item)
+
+    db.rollback.assert_called_once_with()
+    db.commit.assert_not_called()

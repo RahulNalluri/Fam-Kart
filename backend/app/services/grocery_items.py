@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import UUID
 
 from app.models.grocery_item import GroceryItem, GroceryItemStatus
@@ -148,3 +149,85 @@ def update_grocery_item(
         setattr(item, field, value)
 
     return item_repository.update(item)
+
+
+def _get_item_for_transition(
+    household_id: UUID,
+    session_id: UUID,
+    item_id: UUID,
+    user: User,
+    item_repository: GroceryItemRepository,
+    session_repository: ShoppingSessionRepository,
+    member_repository: HouseholdMemberRepository,
+) -> GroceryItem:
+    memberships = member_repository.lock_for_users(
+        household_id=household_id,
+        user_ids={user.id},
+    )
+    if user.id not in memberships:
+        raise GroceryItemNotFoundError
+
+    shopping_session = session_repository.get_for_household_for_update(
+        session_id=session_id,
+        household_id=household_id,
+    )
+    if shopping_session is None:
+        raise GroceryItemNotFoundError
+    if shopping_session.status != ShoppingSessionStatus.ACTIVE:
+        raise GroceryItemShoppingSessionCompletedError
+
+    item = item_repository.get_for_session_for_update(
+        item_id=item_id,
+        shopping_session_id=shopping_session.id,
+    )
+    if item is None:
+        raise GroceryItemNotFoundError
+    return item
+
+
+def complete_grocery_item(
+    household_id: UUID,
+    session_id: UUID,
+    item_id: UUID,
+    user: User,
+    item_repository: GroceryItemRepository,
+    session_repository: ShoppingSessionRepository,
+    member_repository: HouseholdMemberRepository,
+    *,
+    completed_at: datetime | None = None,
+) -> GroceryItem:
+    item = _get_item_for_transition(
+        household_id,
+        session_id,
+        item_id,
+        user,
+        item_repository,
+        session_repository,
+        member_repository,
+    )
+    return item_repository.complete(
+        item,
+        completed_by_user_id=user.id,
+        completed_at=completed_at,
+    )
+
+
+def reopen_grocery_item(
+    household_id: UUID,
+    session_id: UUID,
+    item_id: UUID,
+    user: User,
+    item_repository: GroceryItemRepository,
+    session_repository: ShoppingSessionRepository,
+    member_repository: HouseholdMemberRepository,
+) -> GroceryItem:
+    item = _get_item_for_transition(
+        household_id,
+        session_id,
+        item_id,
+        user,
+        item_repository,
+        session_repository,
+        member_repository,
+    )
+    return item_repository.reopen(item)

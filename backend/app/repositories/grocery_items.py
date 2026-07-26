@@ -1,7 +1,8 @@
+from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import case, select
+from sqlalchemy import case, select, update
 from sqlalchemy.orm import Session
 
 from app.models.grocery_item import GroceryItem, GroceryItemStatus
@@ -80,6 +81,83 @@ class GroceryItemRepository:
         self.db.refresh(item)
         return item
 
+    def complete(
+        self,
+        item: GroceryItem,
+        *,
+        completed_by_user_id: UUID,
+        completed_at: datetime | None = None,
+    ) -> GroceryItem:
+        effective_completed_at = completed_at or datetime.now(UTC)
+        try:
+            result = self.db.execute(
+                update(GroceryItem)
+                .where(
+                    GroceryItem.id == item.id,
+                    GroceryItem.status == GroceryItemStatus.PENDING,
+                )
+                .values(
+                    status=GroceryItemStatus.COMPLETED,
+                    completed_by_user_id=completed_by_user_id,
+                    completed_at=effective_completed_at,
+                ),
+                execution_options={"synchronize_session": False},
+            )
+        except Exception:
+            self.db.rollback()
+            raise
+
+        if getattr(result, "rowcount", 0) == 1:
+            try:
+                self.db.commit()
+            except Exception:
+                self.db.rollback()
+                raise
+
+            self.db.refresh(item)
+            return item
+
+        self.db.rollback()
+        current = self.db.get(GroceryItem, item.id)
+        if current is not None and current.status == GroceryItemStatus.COMPLETED:
+            return current
+        raise GroceryItemTransitionError
+
+    def reopen(self, item: GroceryItem) -> GroceryItem:
+        try:
+            result = self.db.execute(
+                update(GroceryItem)
+                .where(
+                    GroceryItem.id == item.id,
+                    GroceryItem.status == GroceryItemStatus.COMPLETED,
+                )
+                .values(
+                    status=GroceryItemStatus.PENDING,
+                    completed_by_user_id=None,
+                    completed_at=None,
+                ),
+                execution_options={"synchronize_session": False},
+            )
+        except Exception:
+            self.db.rollback()
+            raise
+
+        if getattr(result, "rowcount", 0) == 1:
+            try:
+                self.db.commit()
+            except Exception:
+                self.db.rollback()
+                raise
+
+            self.db.refresh(item)
+            return item
+
+        self.db.rollback()
+        current = self.db.get(GroceryItem, item.id)
+        if current is not None and current.status == GroceryItemStatus.PENDING:
+            return current
+        raise GroceryItemTransitionError
+
     def list_for_session(self, shopping_session_id: UUID) -> list[GroceryItem]:
         statement = (
             select(GroceryItem)
@@ -91,3 +169,7 @@ class GroceryItemRepository:
             )
         )
         return list(self.db.execute(statement).scalars().all())
+
+
+class GroceryItemTransitionError(ValueError):
+    pass
