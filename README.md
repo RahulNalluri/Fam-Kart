@@ -111,6 +111,32 @@ A complete grocery workflow test covers API-based session creation, collaborativ
 assignment and editing, duplicate rejection, completion, reopening, deletion,
 session completion, and retained activity history.
 
+### Real-Time Event Contract
+
+Phase 6 begins with a strict, versioned notification contract for grocery changes.
+The future WebSocket and Redis layers will exchange messages shaped like this:
+
+```json
+{
+  "schema_version": 1,
+  "event_id": "6dd50ac8-8465-4be6-9036-c323d8805621",
+  "event_type": "grocery.item_added",
+  "household_id": "43af621f-932b-4721-aed4-7db4367cfed5",
+  "occurred_at": "2026-07-27T12:00:00Z",
+  "payload": {
+    "shopping_session_id": "10538635-a8d4-4284-bc75-d975fb2e56c7",
+    "grocery_item_id": "8d009993-4557-4ca2-b34b-0e027e43dd41",
+    "actor_user_id": "a097321c-deba-4877-84f1-d60c742c7d21",
+    "item_name": "Rice",
+    "sequence_number": 1
+  }
+}
+```
+
+Messages contain identifiers and ordering information rather than a second copy of
+the grocery record. Mobile clients will refresh authoritative API data after
+receiving an event.
+
 ## Quick Start
 
 PowerShell:
