@@ -7,6 +7,16 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from app.models.grocery_item import GroceryItemStatus
 
 
+def _normalize_item_name(value: object) -> object:
+    if not isinstance(value, str):
+        return value
+
+    normalized = " ".join(value.split())
+    if not normalized:
+        raise ValueError("Grocery item name cannot be blank.")
+    return normalized
+
+
 class CreateGroceryItemRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -24,13 +34,7 @@ class CreateGroceryItemRequest(BaseModel):
     @field_validator("name", mode="before")
     @classmethod
     def normalize_name(cls, value: object) -> object:
-        if not isinstance(value, str):
-            return value
-
-        normalized = value.strip()
-        if not normalized:
-            raise ValueError("Grocery item name cannot be blank.")
-        return normalized
+        return _normalize_item_name(value)
 
     @field_validator("unit", "notes", mode="before")
     @classmethod
@@ -68,13 +72,7 @@ class UpdateGroceryItemRequest(BaseModel):
     def normalize_name(cls, value: object) -> object:
         if value is None:
             raise ValueError("Grocery item name cannot be null.")
-        if not isinstance(value, str):
-            return value
-
-        normalized = value.strip()
-        if not normalized:
-            raise ValueError("Grocery item name cannot be blank.")
-        return normalized
+        return _normalize_item_name(value)
 
     @field_validator("unit", "notes", mode="before")
     @classmethod

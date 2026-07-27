@@ -3,6 +3,7 @@ from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import case, func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.grocery_activity_event import (
@@ -10,6 +11,12 @@ from app.models.grocery_activity_event import (
     GroceryActivityType,
 )
 from app.models.grocery_item import GroceryItem, GroceryItemStatus
+
+PENDING_NAME_INDEX = "uq_grocery_items_session_pending_name"
+
+
+class DuplicatePendingGroceryItemError(ValueError):
+    pass
 
 
 class GroceryItemRepository:
@@ -28,18 +35,24 @@ class GroceryItemRepository:
         created_by_user_id: UUID,
         assigned_to_user_id: UUID | None,
     ) -> GroceryItem:
-        item = GroceryItem(
-            shopping_session_id=shopping_session_id,
-            name=name,
-            quantity=quantity,
-            unit=unit,
-            notes=notes,
-            status=GroceryItemStatus.PENDING,
-            created_by_user_id=created_by_user_id,
-            assigned_to_user_id=assigned_to_user_id,
-        )
-        self.db.add(item)
         try:
+            if self.pending_name_exists(
+                shopping_session_id=shopping_session_id,
+                name=name,
+            ):
+                raise DuplicatePendingGroceryItemError
+
+            item = GroceryItem(
+                shopping_session_id=shopping_session_id,
+                name=name,
+                quantity=quantity,
+                unit=unit,
+                notes=notes,
+                status=GroceryItemStatus.PENDING,
+                created_by_user_id=created_by_user_id,
+                assigned_to_user_id=assigned_to_user_id,
+            )
+            self.db.add(item)
             self.db.flush()
             self._add_activity_event(
                 household_id=household_id,
@@ -48,6 +61,11 @@ class GroceryItemRepository:
                 event_type=GroceryActivityType.ITEM_ADDED,
             )
             self.db.commit()
+        except IntegrityError as error:
+            self.db.rollback()
+            if _is_pending_name_conflict(error):
+                raise DuplicatePendingGroceryItemError from error
+            raise
         except Exception:
             self.db.rollback()
             raise
@@ -66,6 +84,23 @@ class GroceryItemRepository:
             GroceryItem.shopping_session_id == shopping_session_id,
         )
         return self.db.execute(statement).scalar_one_or_none()
+
+    def pending_name_exists(
+        self,
+        *,
+        shopping_session_id: UUID,
+        name: str,
+        excluding_item_id: UUID | None = None,
+    ) -> bool:
+        statement = select(GroceryItem.id).where(
+            GroceryItem.shopping_session_id == shopping_session_id,
+            GroceryItem.status == GroceryItemStatus.PENDING,
+            func.lower(func.trim(GroceryItem.name)) == name.strip().lower(),
+        )
+        if excluding_item_id is not None:
+            statement = statement.where(GroceryItem.id != excluding_item_id)
+        statement = statement.execution_options(autoflush=False)
+        return self.db.execute(statement).first() is not None
 
     def get_for_session_for_update(
         self,
@@ -91,6 +126,13 @@ class GroceryItemRepository:
         actor_user_id: UUID,
     ) -> GroceryItem:
         try:
+            if self.pending_name_exists(
+                shopping_session_id=item.shopping_session_id,
+                name=item.name,
+                excluding_item_id=item.id,
+            ):
+                raise DuplicatePendingGroceryItemError
+
             self._add_activity_event(
                 household_id=household_id,
                 item=item,
@@ -98,6 +140,11 @@ class GroceryItemRepository:
                 event_type=GroceryActivityType.ITEM_EDITED,
             )
             self.db.commit()
+        except IntegrityError as error:
+            self.db.rollback()
+            if _is_pending_name_conflict(error):
+                raise DuplicatePendingGroceryItemError from error
+            raise
         except Exception:
             self.db.rollback()
             raise
@@ -162,6 +209,13 @@ class GroceryItemRepository:
         actor_user_id: UUID,
     ) -> GroceryItem:
         try:
+            if self.pending_name_exists(
+                shopping_session_id=item.shopping_session_id,
+                name=item.name,
+                excluding_item_id=item.id,
+            ):
+                raise DuplicatePendingGroceryItemError
+
             result = self.db.execute(
                 update(GroceryItem)
                 .where(
@@ -175,6 +229,11 @@ class GroceryItemRepository:
                 ),
                 execution_options={"synchronize_session": False},
             )
+        except IntegrityError as error:
+            self.db.rollback()
+            if _is_pending_name_conflict(error):
+                raise DuplicatePendingGroceryItemError from error
+            raise
         except Exception:
             self.db.rollback()
             raise
@@ -270,3 +329,11 @@ class GroceryItemRepository:
 
 class GroceryItemTransitionError(ValueError):
     pass
+
+
+def _is_pending_name_conflict(error: IntegrityError) -> bool:
+    diagnostic = getattr(error.orig, "diag", None)
+    constraint_name = getattr(diagnostic, "constraint_name", None)
+    return constraint_name == PENDING_NAME_INDEX or PENDING_NAME_INDEX in str(
+        error.orig,
+    )

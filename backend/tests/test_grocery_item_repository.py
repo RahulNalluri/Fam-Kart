@@ -16,7 +16,10 @@ from app.models import (
     ShoppingSession,
     User,
 )
-from app.repositories.grocery_items import GroceryItemRepository
+from app.repositories.grocery_items import (
+    DuplicatePendingGroceryItemError,
+    GroceryItemRepository,
+)
 
 
 def create_test_session() -> Session:
@@ -101,6 +104,82 @@ def test_repository_creates_name_only_item() -> None:
         assert item.unit is None
         assert item.notes is None
         assert item.assigned_to_user_id is None
+    finally:
+        db.close()
+
+
+def test_repository_rejects_case_insensitive_pending_duplicate() -> None:
+    db = create_test_session()
+    try:
+        user, shopping_session = create_dependencies(db, suffix="duplicate")
+        repository = GroceryItemRepository(db)
+        create_arguments = {
+            "household_id": shopping_session.household_id,
+            "shopping_session_id": shopping_session.id,
+            "quantity": None,
+            "unit": None,
+            "notes": None,
+            "created_by_user_id": user.id,
+            "assigned_to_user_id": None,
+        }
+        repository.create(name="Milk", **create_arguments)
+
+        with pytest.raises(DuplicatePendingGroceryItemError):
+            repository.create(name="  mIlK  ", **create_arguments)
+
+        assert len(repository.list_for_session(shopping_session.id)) == 1
+    finally:
+        db.close()
+
+
+def test_repository_allows_completed_name_and_name_in_another_session() -> None:
+    db = create_test_session()
+    try:
+        user, shopping_session = create_dependencies(db, suffix="allowed-duplicate")
+        other_user, other_session = create_dependencies(
+            db,
+            suffix="other-allowed-duplicate",
+        )
+        repository = GroceryItemRepository(db)
+        first = repository.create(
+            household_id=shopping_session.household_id,
+            shopping_session_id=shopping_session.id,
+            name="Rice",
+            quantity=None,
+            unit=None,
+            notes=None,
+            created_by_user_id=user.id,
+            assigned_to_user_id=None,
+        )
+        repository.complete(
+            first,
+            household_id=shopping_session.household_id,
+            completed_by_user_id=user.id,
+        )
+
+        same_session_item = repository.create(
+            household_id=shopping_session.household_id,
+            shopping_session_id=shopping_session.id,
+            name="rice",
+            quantity=None,
+            unit=None,
+            notes=None,
+            created_by_user_id=user.id,
+            assigned_to_user_id=None,
+        )
+        other_session_item = repository.create(
+            household_id=other_session.household_id,
+            shopping_session_id=other_session.id,
+            name="RICE",
+            quantity=None,
+            unit=None,
+            notes=None,
+            created_by_user_id=other_user.id,
+            assigned_to_user_id=None,
+        )
+
+        assert same_session_item.status == GroceryItemStatus.PENDING
+        assert other_session_item.status == GroceryItemStatus.PENDING
     finally:
         db.close()
 
@@ -192,6 +271,7 @@ def test_repository_lists_only_session_items_pending_first() -> None:
 
 def test_repository_rolls_back_when_creation_commit_fails() -> None:
     db = Mock(spec=Session)
+    db.execute.return_value.first.return_value = None
     db.commit.side_effect = RuntimeError("database unavailable")
     repository = GroceryItemRepository(db)
 
@@ -279,6 +359,7 @@ def test_repository_update_lookup_remains_scoped_to_session() -> None:
 
 def test_repository_rolls_back_when_update_commit_fails() -> None:
     db = Mock(spec=Session)
+    db.execute.return_value.first.return_value = None
     db.commit.side_effect = RuntimeError("database unavailable")
     repository = GroceryItemRepository(db)
     item = GroceryItem(name="Rice", shopping_session_id=uuid4())
@@ -399,6 +480,75 @@ def test_repository_reopens_completed_item_and_is_idempotent() -> None:
         assert repeated.status == GroceryItemStatus.PENDING
         assert repeated.completed_by_user_id is None
         assert repeated.completed_at is None
+    finally:
+        db.close()
+
+
+def test_repository_rejects_rename_and_reopen_pending_duplicates() -> None:
+    db = create_test_session()
+    try:
+        user, shopping_session = create_dependencies(db, suffix="mutation-duplicate")
+        repository = GroceryItemRepository(db)
+        rice = repository.create(
+            household_id=shopping_session.household_id,
+            shopping_session_id=shopping_session.id,
+            name="Rice",
+            quantity=None,
+            unit=None,
+            notes=None,
+            created_by_user_id=user.id,
+            assigned_to_user_id=None,
+        )
+        milk = repository.create(
+            household_id=shopping_session.household_id,
+            shopping_session_id=shopping_session.id,
+            name="Milk",
+            quantity=None,
+            unit=None,
+            notes=None,
+            created_by_user_id=user.id,
+            assigned_to_user_id=None,
+        )
+        household_id = shopping_session.household_id
+        actor_user_id = user.id
+
+        milk.name = " RICE "
+        with pytest.raises(DuplicatePendingGroceryItemError):
+            repository.update(
+                milk,
+                household_id=household_id,
+                actor_user_id=actor_user_id,
+            )
+
+        db.refresh(milk)
+        assert milk.name == "Milk"
+
+        repository.complete(
+            rice,
+            household_id=household_id,
+            completed_by_user_id=actor_user_id,
+        )
+        replacement = repository.create(
+            household_id=household_id,
+            shopping_session_id=shopping_session.id,
+            name="rice",
+            quantity=None,
+            unit=None,
+            notes=None,
+            created_by_user_id=actor_user_id,
+            assigned_to_user_id=None,
+        )
+
+        with pytest.raises(DuplicatePendingGroceryItemError):
+            repository.reopen(
+                rice,
+                household_id=household_id,
+                actor_user_id=actor_user_id,
+            )
+
+        db.refresh(rice)
+        assert rice.status == GroceryItemStatus.COMPLETED
+        assert replacement.status == GroceryItemStatus.PENDING
     finally:
         db.close()
 

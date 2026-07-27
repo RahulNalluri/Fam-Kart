@@ -6,7 +6,10 @@ from app.models.grocery_item import GroceryItem, GroceryItemStatus
 from app.models.shopping_session import ShoppingSessionStatus
 from app.models.user import User
 from app.repositories.grocery_activity_events import GroceryActivityEventRepository
-from app.repositories.grocery_items import GroceryItemRepository
+from app.repositories.grocery_items import (
+    DuplicatePendingGroceryItemError,
+    GroceryItemRepository,
+)
 from app.repositories.household_members import HouseholdMemberRepository
 from app.repositories.shopping_sessions import ShoppingSessionRepository
 from app.schemas.grocery_items import CreateGroceryItemRequest, UpdateGroceryItemRequest
@@ -29,6 +32,10 @@ class GroceryItemNotFoundError(ValueError):
 
 
 class GroceryItemCompletedError(ValueError):
+    pass
+
+
+class GroceryItemDuplicateError(ValueError):
     pass
 
 
@@ -66,16 +73,19 @@ def create_grocery_item(
     if shopping_session.status != ShoppingSessionStatus.ACTIVE:
         raise GroceryItemShoppingSessionCompletedError
 
-    return item_repository.create(
-        household_id=household_id,
-        shopping_session_id=shopping_session.id,
-        name=data.name,
-        quantity=data.quantity,
-        unit=data.unit,
-        notes=data.notes,
-        created_by_user_id=user.id,
-        assigned_to_user_id=data.assigned_to_user_id,
-    )
+    try:
+        return item_repository.create(
+            household_id=household_id,
+            shopping_session_id=shopping_session.id,
+            name=data.name,
+            quantity=data.quantity,
+            unit=data.unit,
+            notes=data.notes,
+            created_by_user_id=user.id,
+            assigned_to_user_id=data.assigned_to_user_id,
+        )
+    except DuplicatePendingGroceryItemError as error:
+        raise GroceryItemDuplicateError from error
 
 
 def list_grocery_items(
@@ -151,11 +161,14 @@ def update_grocery_item(
     for field, value in changes.items():
         setattr(item, field, value)
 
-    return item_repository.update(
-        item,
-        household_id=household_id,
-        actor_user_id=user.id,
-    )
+    try:
+        return item_repository.update(
+            item,
+            household_id=household_id,
+            actor_user_id=user.id,
+        )
+    except DuplicatePendingGroceryItemError as error:
+        raise GroceryItemDuplicateError from error
 
 
 def _get_item_for_active_session(
@@ -238,11 +251,14 @@ def reopen_grocery_item(
         session_repository,
         member_repository,
     )
-    return item_repository.reopen(
-        item,
-        household_id=household_id,
-        actor_user_id=user.id,
-    )
+    try:
+        return item_repository.reopen(
+            item,
+            household_id=household_id,
+            actor_user_id=user.id,
+        )
+    except DuplicatePendingGroceryItemError as error:
+        raise GroceryItemDuplicateError from error
 
 
 def delete_grocery_item(

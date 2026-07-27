@@ -496,6 +496,143 @@ def test_add_item_rejects_invalid_input(
     assert response.json()["error"]["code"] == "validation_error"
 
 
+def test_add_item_rejects_normalized_pending_duplicate(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    member = create_user(db_session, email="grocery-duplicate-add@example.com")
+    household = create_household(db_session, name="Duplicate Grocery Add")
+    add_membership(
+        db_session,
+        household=household,
+        user=member,
+        role=HouseholdRole.MEMBER,
+    )
+    shopping_session = create_shopping_session(
+        db_session,
+        household=household,
+        creator=member,
+    )
+    url = collection_url(household.id, shopping_session.id)
+    headers = authorization_header(member)
+
+    created = client.post(
+        url,
+        headers=headers,
+        json={"name": "  Brown   Rice  "},
+    )
+    duplicate = client.post(
+        url,
+        headers=headers,
+        json={"name": "brown rice"},
+    )
+
+    assert created.status_code == 201
+    assert created.json()["name"] == "Brown Rice"
+    assert duplicate.status_code == 409
+    assert duplicate.json()["error"]["message"] == (
+        "This item is already pending in this shopping session."
+    )
+    assert len(db_session.query(GroceryItem).all()) == 1
+    assert len(db_session.query(GroceryActivityEvent).all()) == 1
+
+
+def test_edit_item_rejects_pending_duplicate_name(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    member = create_user(db_session, email="grocery-duplicate-edit@example.com")
+    household = create_household(db_session, name="Duplicate Grocery Edit")
+    add_membership(
+        db_session,
+        household=household,
+        user=member,
+        role=HouseholdRole.MEMBER,
+    )
+    shopping_session = create_shopping_session(
+        db_session,
+        household=household,
+        creator=member,
+    )
+    rice = create_grocery_item(
+        db_session,
+        shopping_session=shopping_session,
+        creator=member,
+    )
+    milk_response = client.post(
+        collection_url(household.id, shopping_session.id),
+        headers=authorization_header(member),
+        json={"name": "Milk"},
+    )
+    milk_id = milk_response.json()["id"]
+
+    response = client.patch(
+        item_url(household.id, shopping_session.id, milk_id),
+        headers=authorization_header(member),
+        json={"name": " rIcE "},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["message"] == (
+        "This item is already pending in this shopping session."
+    )
+    db_session.expire_all()
+    persisted_milk = db_session.get(GroceryItem, UUID(milk_id))
+    assert persisted_milk is not None
+    assert persisted_milk.name == "Milk"
+    assert db_session.get(GroceryItem, rice.id) is not None
+
+
+def test_reopen_item_rejects_pending_duplicate_name(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    member = create_user(db_session, email="grocery-duplicate-reopen@example.com")
+    household = create_household(db_session, name="Duplicate Grocery Reopen")
+    add_membership(
+        db_session,
+        household=household,
+        user=member,
+        role=HouseholdRole.MEMBER,
+    )
+    shopping_session = create_shopping_session(
+        db_session,
+        household=household,
+        creator=member,
+    )
+    completed_rice = create_grocery_item(
+        db_session,
+        shopping_session=shopping_session,
+        creator=member,
+        status=GroceryItemStatus.COMPLETED,
+    )
+    replacement = client.post(
+        collection_url(household.id, shopping_session.id),
+        headers=authorization_header(member),
+        json={"name": "rice"},
+    )
+
+    response = client.patch(
+        transition_url(
+            household.id,
+            shopping_session.id,
+            completed_rice.id,
+            "reopen",
+        ),
+        headers=authorization_header(member),
+    )
+
+    assert replacement.status_code == 201
+    assert response.status_code == 409
+    assert response.json()["error"]["message"] == (
+        "This item is already pending in this shopping session."
+    )
+    db_session.expire_all()
+    persisted = db_session.get(GroceryItem, completed_rice.id)
+    assert persisted is not None
+    assert persisted.status == GroceryItemStatus.COMPLETED
+
+
 @pytest.mark.parametrize(
     "url",
     [

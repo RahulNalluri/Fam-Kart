@@ -13,6 +13,7 @@ from sqlalchemy import (
     Numeric,
     String,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -47,6 +48,14 @@ class GroceryItem(Base):
             "ix_grocery_items_shopping_session_id_status",
             "shopping_session_id",
             "status",
+        ),
+        Index(
+            "uq_grocery_items_session_pending_name",
+            "shopping_session_id",
+            text("lower(trim(name))"),
+            unique=True,
+            postgresql_where=text("status = 'pending'"),
+            sqlite_where=text("status = 'pending'"),
         ),
     )
 

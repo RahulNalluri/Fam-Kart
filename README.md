@@ -65,9 +65,9 @@ permission changes after transfer, removal, leaving, and rejoining.
 The grocery-list phase now includes the `shopping_sessions` database foundation.
 Each session belongs to one household, records who created it when available, and
 supports active and completed lifecycle states. Grocery items and session API
-endpoints will be added in later modules. The shopping-session repository and
-service layers now create and retrieve household-scoped sessions, permit only
-current members, and prevent more than one active session per household.
+endpoints build on this foundation. The shopping-session repository and service
+layers create and retrieve household-scoped sessions, permit only current members,
+and prevent more than one active session per household.
 Authenticated household members can access this behavior through
 `POST /api/v1/households/{household_id}/shopping-sessions`,
 `GET /api/v1/households/{household_id}/shopping-sessions`, and
@@ -100,6 +100,10 @@ Pending items in active sessions can be permanently removed through
 `DELETE /api/v1/households/{household_id}/shopping-sessions/{session_id}/items/{item_id}`.
 Grocery mutations are recorded as activity events and can be listed newest first
 through `GET /api/v1/households/{household_id}/shopping-sessions/{session_id}/items/activity`.
+Pending grocery-item names are unique within each shopping session after trimming,
+whitespace normalization, and case-insensitive comparison. Duplicate adds, renames,
+and reopens return a clear conflict response, while completed items and items in
+other shopping sessions do not conflict.
 
 ## Quick Start
 

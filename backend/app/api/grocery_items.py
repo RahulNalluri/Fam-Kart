@@ -20,6 +20,7 @@ from app.schemas.grocery_items import (
 from app.services.grocery_items import (
     GroceryItemAssigneeNotFoundError,
     GroceryItemCompletedError,
+    GroceryItemDuplicateError,
     GroceryItemNotFoundError,
     GroceryItemShoppingSessionCompletedError,
     GroceryItemShoppingSessionNotFoundError,
@@ -81,7 +82,11 @@ def create_current_session_grocery_item(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="The selected person is not a member of this household.",
         ) from error
-
+    except GroceryItemDuplicateError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This item is already pending in this shopping session.",
+        ) from error
     return GroceryItemResponse.model_validate(item)
 
 
@@ -189,7 +194,11 @@ def update_current_session_grocery_item(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="The selected person is not a member of this household.",
         ) from error
-
+    except GroceryItemDuplicateError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This item is already pending in this shopping session.",
+        ) from error
     return GroceryItemResponse.model_validate(item)
 
 
@@ -264,6 +273,11 @@ def reopen_current_session_grocery_item(
                 "You cannot reopen items because this shopping session is already "
                 "completed."
             ),
+        ) from error
+    except GroceryItemDuplicateError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This item is already pending in this shopping session.",
         ) from error
 
     return GroceryItemResponse.model_validate(item)
