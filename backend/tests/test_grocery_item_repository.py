@@ -5,6 +5,7 @@ from uuid import uuid4
 
 import pytest
 from sqlalchemy import create_engine
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
@@ -128,6 +129,33 @@ def test_repository_rejects_case_insensitive_pending_duplicate() -> None:
             repository.create(name="  mIlK  ", **create_arguments)
 
         assert len(repository.list_for_session(shopping_session.id)) == 1
+    finally:
+        db.close()
+
+
+def test_database_index_rejects_duplicate_when_repository_is_bypassed() -> None:
+    db = create_test_session()
+    try:
+        user, shopping_session = create_dependencies(db, suffix="index-duplicate")
+        db.add_all(
+            [
+                GroceryItem(
+                    shopping_session_id=shopping_session.id,
+                    name="Milk",
+                    created_by_user_id=user.id,
+                ),
+                GroceryItem(
+                    shopping_session_id=shopping_session.id,
+                    name=" milk ",
+                    created_by_user_id=user.id,
+                ),
+            ],
+        )
+
+        with pytest.raises(IntegrityError):
+            db.commit()
+
+        db.rollback()
     finally:
         db.close()
 

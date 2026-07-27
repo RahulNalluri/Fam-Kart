@@ -104,6 +104,12 @@ Pending grocery-item names are unique within each shopping session after trimmin
 whitespace normalization, and case-insensitive comparison. Duplicate adds, renames,
 and reopens return a clear conflict response, while completed items and items in
 other shopping sessions do not conflict.
+Grocery authorization tests verify immediate access revocation after membership
+removal and prevent cross-household sessions or cross-session item IDs from being
+used to read or mutate another grocery list.
+A complete grocery workflow test covers API-based session creation, collaborative
+assignment and editing, duplicate rejection, completion, reopening, deletion,
+session completion, and retained activity history.
 
 ## Quick Start
 

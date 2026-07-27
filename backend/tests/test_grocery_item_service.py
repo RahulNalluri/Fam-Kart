@@ -17,13 +17,17 @@ from app.models import (
     User,
 )
 from app.repositories.grocery_activity_events import GroceryActivityEventRepository
-from app.repositories.grocery_items import GroceryItemRepository
+from app.repositories.grocery_items import (
+    DuplicatePendingGroceryItemError,
+    GroceryItemRepository,
+)
 from app.repositories.household_members import HouseholdMemberRepository
 from app.repositories.shopping_sessions import ShoppingSessionRepository
 from app.schemas.grocery_items import CreateGroceryItemRequest, UpdateGroceryItemRequest
 from app.services.grocery_items import (
     GroceryItemAssigneeNotFoundError,
     GroceryItemCompletedError,
+    GroceryItemDuplicateError,
     GroceryItemNotFoundError,
     GroceryItemShoppingSessionCompletedError,
     GroceryItemShoppingSessionNotFoundError,
@@ -261,6 +265,31 @@ def test_item_creation_requires_active_scoped_session(
     item_repository.create.assert_not_called()
 
 
+def test_create_translates_repository_duplicate_error() -> None:
+    user = build_user()
+    household_id = uuid4()
+    shopping_session = build_session(household_id)
+    member_repository = Mock(spec=HouseholdMemberRepository)
+    member_repository.lock_for_users.return_value = {
+        user.id: build_membership(user.id, household_id),
+    }
+    session_repository = Mock(spec=ShoppingSessionRepository)
+    session_repository.get_for_household_for_update.return_value = shopping_session
+    item_repository = Mock(spec=GroceryItemRepository)
+    item_repository.create.side_effect = DuplicatePendingGroceryItemError
+
+    with pytest.raises(GroceryItemDuplicateError):
+        create_grocery_item(
+            household_id,
+            shopping_session.id,
+            CreateGroceryItemRequest(name="Rice"),
+            user,
+            item_repository,
+            session_repository,
+            member_repository,
+        )
+
+
 @pytest.mark.parametrize(
     "session_status",
     [ShoppingSessionStatus.ACTIVE, ShoppingSessionStatus.COMPLETED],
@@ -410,6 +439,34 @@ def test_update_can_clear_optional_item_fields() -> None:
     assert item.unit is None
     assert item.notes is None
     assert item.assigned_to_user_id is None
+
+
+def test_update_translates_repository_duplicate_error() -> None:
+    user = build_user()
+    household_id = uuid4()
+    shopping_session = build_session(household_id)
+    item = build_item(shopping_session.id, user.id)
+    member_repository = Mock(spec=HouseholdMemberRepository)
+    member_repository.lock_for_users.return_value = {
+        user.id: build_membership(user.id, household_id),
+    }
+    session_repository = Mock(spec=ShoppingSessionRepository)
+    session_repository.get_for_household_for_update.return_value = shopping_session
+    item_repository = Mock(spec=GroceryItemRepository)
+    item_repository.get_for_session_for_update.return_value = item
+    item_repository.update.side_effect = DuplicatePendingGroceryItemError
+
+    with pytest.raises(GroceryItemDuplicateError):
+        update_grocery_item(
+            household_id,
+            shopping_session.id,
+            item.id,
+            UpdateGroceryItemRequest(name="Milk"),
+            user,
+            item_repository,
+            session_repository,
+            member_repository,
+        )
 
 
 def test_outsider_cannot_update_or_discover_item() -> None:
@@ -591,6 +648,34 @@ def test_current_member_can_reopen_item(role: HouseholdRole) -> None:
         household_id=household_id,
         actor_user_id=user.id,
     )
+
+
+def test_reopen_translates_repository_duplicate_error() -> None:
+    user = build_user()
+    household_id = uuid4()
+    shopping_session = build_session(household_id)
+    item = build_item(shopping_session.id, user.id)
+    item.status = GroceryItemStatus.COMPLETED
+    member_repository = Mock(spec=HouseholdMemberRepository)
+    member_repository.lock_for_users.return_value = {
+        user.id: build_membership(user.id, household_id),
+    }
+    session_repository = Mock(spec=ShoppingSessionRepository)
+    session_repository.get_for_household_for_update.return_value = shopping_session
+    item_repository = Mock(spec=GroceryItemRepository)
+    item_repository.get_for_session_for_update.return_value = item
+    item_repository.reopen.side_effect = DuplicatePendingGroceryItemError
+
+    with pytest.raises(GroceryItemDuplicateError):
+        reopen_grocery_item(
+            household_id,
+            shopping_session.id,
+            item.id,
+            user,
+            item_repository,
+            session_repository,
+            member_repository,
+        )
 
 
 @pytest.mark.parametrize("operation", [complete_grocery_item, reopen_grocery_item])

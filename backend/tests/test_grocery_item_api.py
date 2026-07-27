@@ -1504,3 +1504,385 @@ def test_activity_list_validates_limit(
 
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "validation_error"
+
+
+def test_same_item_name_is_allowed_in_a_later_shopping_session(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    member = create_user(db_session, email="duplicate-later-session@example.com")
+    household = create_household(db_session, name="Later Grocery Session")
+    add_membership(
+        db_session,
+        household=household,
+        user=member,
+        role=HouseholdRole.MEMBER,
+    )
+    first_session = create_shopping_session(
+        db_session,
+        household=household,
+        creator=member,
+    )
+    headers = authorization_header(member)
+    first_response = client.post(
+        collection_url(household.id, first_session.id),
+        headers=headers,
+        json={"name": "Rice"},
+    )
+    first_session.status = ShoppingSessionStatus.COMPLETED
+    first_session.completed_at = datetime.now(UTC)
+    db_session.commit()
+    second_session = create_shopping_session(
+        db_session,
+        household=household,
+        creator=member,
+    )
+
+    second_response = client.post(
+        collection_url(household.id, second_session.id),
+        headers=headers,
+        json={"name": "rice"},
+    )
+
+    assert first_response.status_code == 201
+    assert second_response.status_code == 201
+    assert second_response.json()["shopping_session_id"] == str(second_session.id)
+
+
+def test_deleted_item_name_can_be_added_again(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    member = create_user(db_session, email="duplicate-after-delete@example.com")
+    household = create_household(db_session, name="Deleted Grocery Item")
+    add_membership(
+        db_session,
+        household=household,
+        user=member,
+        role=HouseholdRole.MEMBER,
+    )
+    shopping_session = create_shopping_session(
+        db_session,
+        household=household,
+        creator=member,
+    )
+    headers = authorization_header(member)
+    url = collection_url(household.id, shopping_session.id)
+    original = client.post(url, headers=headers, json={"name": "Milk"})
+
+    deleted = client.delete(
+        item_url(household.id, shopping_session.id, original.json()["id"]),
+        headers=headers,
+    )
+    replacement = client.post(url, headers=headers, json={"name": "milk"})
+
+    assert original.status_code == 201
+    assert deleted.status_code == 204
+    assert replacement.status_code == 201
+    assert replacement.json()["id"] != original.json()["id"]
+
+
+@pytest.mark.parametrize("resource", ["items", "activity"])
+def test_cross_household_session_cannot_be_read(
+    client: TestClient,
+    db_session: Session,
+    resource: str,
+) -> None:
+    member = create_user(
+        db_session,
+        email=f"grocery-cross-household-{resource}@example.com",
+    )
+    outsider = create_user(
+        db_session,
+        email=f"grocery-cross-household-owner-{resource}@example.com",
+    )
+    household = create_household(db_session, name=f"Visible {resource}")
+    hidden_household = create_household(db_session, name=f"Hidden {resource}")
+    add_membership(
+        db_session,
+        household=household,
+        user=member,
+        role=HouseholdRole.MEMBER,
+    )
+    hidden_session = create_shopping_session(
+        db_session,
+        household=hidden_household,
+        creator=outsider,
+    )
+    url = (
+        collection_url(household.id, hidden_session.id)
+        if resource == "items"
+        else activity_url(household.id, hidden_session.id)
+    )
+
+    response = client.get(url, headers=authorization_header(member))
+
+    assert response.status_code == 404
+    assert response.json()["error"]["message"] == (
+        "This shopping session could not be found or you do not have access to it."
+    )
+
+
+@pytest.mark.parametrize("action", ["edit", "complete", "reopen", "delete"])
+def test_item_from_another_session_cannot_be_mutated(
+    client: TestClient,
+    db_session: Session,
+    action: str,
+) -> None:
+    member = create_user(
+        db_session,
+        email=f"grocery-cross-session-{action}@example.com",
+    )
+    household = create_household(db_session, name=f"Cross Session {action}")
+    add_membership(
+        db_session,
+        household=household,
+        user=member,
+        role=HouseholdRole.MEMBER,
+    )
+    first_session = create_shopping_session(
+        db_session,
+        household=household,
+        creator=member,
+    )
+    item = create_grocery_item(
+        db_session,
+        shopping_session=first_session,
+        creator=member,
+    )
+    first_session.status = ShoppingSessionStatus.COMPLETED
+    first_session.completed_at = datetime.now(UTC)
+    db_session.commit()
+    current_session = create_shopping_session(
+        db_session,
+        household=household,
+        creator=member,
+    )
+    headers = authorization_header(member)
+
+    if action == "edit":
+        response = client.patch(
+            item_url(household.id, current_session.id, item.id),
+            headers=headers,
+            json={"name": "Hidden edit"},
+        )
+    elif action == "delete":
+        response = client.delete(
+            item_url(household.id, current_session.id, item.id),
+            headers=headers,
+        )
+    else:
+        response = client.patch(
+            transition_url(household.id, current_session.id, item.id, action),
+            headers=headers,
+        )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["message"] == (
+        "This grocery item could not be found or you do not have access to it."
+    )
+    assert db_session.get(GroceryItem, item.id) is not None
+
+
+@pytest.mark.parametrize(
+    "action",
+    ["add", "list", "activity", "edit", "complete", "reopen", "delete"],
+)
+def test_removed_member_loses_all_grocery_access_immediately(
+    client: TestClient,
+    db_session: Session,
+    action: str,
+) -> None:
+    former_member = create_user(
+        db_session,
+        email=f"grocery-removed-member-{action}@example.com",
+    )
+    household = create_household(db_session, name=f"Removed Member {action}")
+    add_membership(
+        db_session,
+        household=household,
+        user=former_member,
+        role=HouseholdRole.MEMBER,
+    )
+    shopping_session = create_shopping_session(
+        db_session,
+        household=household,
+        creator=former_member,
+    )
+    item = create_grocery_item(
+        db_session,
+        shopping_session=shopping_session,
+        creator=former_member,
+    )
+    membership = (
+        db_session.query(HouseholdMember)
+        .filter_by(
+            household_id=household.id,
+            user_id=former_member.id,
+        )
+        .one()
+    )
+    db_session.delete(membership)
+    db_session.commit()
+    headers = authorization_header(former_member)
+
+    if action == "add":
+        response = client.post(
+            collection_url(household.id, shopping_session.id),
+            headers=headers,
+            json={"name": "Milk"},
+        )
+    elif action == "list":
+        response = client.get(
+            collection_url(household.id, shopping_session.id),
+            headers=headers,
+        )
+    elif action == "activity":
+        response = client.get(
+            activity_url(household.id, shopping_session.id),
+            headers=headers,
+        )
+    elif action == "edit":
+        response = client.patch(
+            item_url(household.id, shopping_session.id, item.id),
+            headers=headers,
+            json={"name": "Blocked edit"},
+        )
+    elif action == "delete":
+        response = client.delete(
+            item_url(household.id, shopping_session.id, item.id),
+            headers=headers,
+        )
+    else:
+        response = client.patch(
+            transition_url(household.id, shopping_session.id, item.id, action),
+            headers=headers,
+        )
+
+    expected_resource = (
+        "shopping session" if action in {"add", "list", "activity"} else "grocery item"
+    )
+    assert response.status_code == 404
+    assert response.json()["error"]["message"] == (
+        f"This {expected_resource} could not be found or you do not have access to it."
+    )
+    assert db_session.get(GroceryItem, item.id) is not None
+
+
+def test_complete_grocery_workflow_from_session_creation_to_activity_history(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    owner = create_user(db_session, email="grocery-workflow-owner@example.com")
+    member = create_user(db_session, email="grocery-workflow-member@example.com")
+    household = create_household(db_session, name="Complete Grocery Workflow")
+    add_membership(
+        db_session,
+        household=household,
+        user=owner,
+        role=HouseholdRole.OWNER,
+    )
+    add_membership(
+        db_session,
+        household=household,
+        user=member,
+        role=HouseholdRole.MEMBER,
+    )
+    owner_headers = authorization_header(owner)
+    member_headers = authorization_header(member)
+    sessions_url = f"/api/v1/households/{household.id}/shopping-sessions"
+
+    session_response = client.post(sessions_url, headers=owner_headers)
+    assert session_response.status_code == 201
+    session_id = session_response.json()["id"]
+    collection = collection_url(household.id, session_id)
+
+    created = client.post(
+        collection,
+        headers=owner_headers,
+        json={
+            "name": "Rice",
+            "quantity": "5",
+            "unit": "kg",
+            "assigned_to_user_id": str(member.id),
+        },
+    )
+    assert created.status_code == 201
+    item_id = created.json()["id"]
+    item = item_url(household.id, session_id, item_id)
+
+    listed = client.get(collection, headers=member_headers)
+    assert listed.status_code == 200
+    assert [entry["id"] for entry in listed.json()] == [item_id]
+    assert listed.json()[0]["assigned_to_user_id"] == str(member.id)
+
+    duplicate = client.post(
+        collection,
+        headers=member_headers,
+        json={"name": "  rIcE  ", "quantity": "1"},
+    )
+    assert duplicate.status_code == 409
+    assert duplicate.json()["error"]["message"] == (
+        "This item is already pending in this shopping session."
+    )
+
+    edited = client.patch(
+        item,
+        headers=member_headers,
+        json={
+            "name": "Brown rice",
+            "quantity": "2.500",
+            "notes": "Prefer a sealed packet",
+            "assigned_to_user_id": str(owner.id),
+        },
+    )
+    assert edited.status_code == 200
+    assert edited.json()["name"] == "Brown rice"
+    assert Decimal(edited.json()["quantity"]) == Decimal("2.500")
+    assert edited.json()["assigned_to_user_id"] == str(owner.id)
+
+    completed = client.patch(f"{item}/complete", headers=owner_headers)
+    assert completed.status_code == 200
+    assert completed.json()["status"] == "completed"
+    assert completed.json()["completed_by_user_id"] == str(owner.id)
+
+    reopened = client.patch(f"{item}/reopen", headers=member_headers)
+    assert reopened.status_code == 200
+    assert reopened.json()["status"] == "pending"
+    assert reopened.json()["completed_by_user_id"] is None
+
+    deleted = client.delete(item, headers=owner_headers)
+    assert deleted.status_code == 204
+    assert client.get(collection, headers=member_headers).json() == []
+
+    session_completed = client.patch(
+        f"{sessions_url}/{session_id}/complete",
+        headers=member_headers,
+    )
+    assert session_completed.status_code == 200
+    assert session_completed.json()["status"] == "completed"
+
+    activity = client.get(
+        activity_url(household.id, session_id),
+        headers=member_headers,
+    )
+    assert activity.status_code == 200
+    events = activity.json()
+    assert [event["event_type"] for event in events] == [
+        "item_deleted",
+        "item_reopened",
+        "item_completed",
+        "item_edited",
+        "item_added",
+    ]
+    assert [event["actor_user_id"] for event in events] == [
+        str(owner.id),
+        str(member.id),
+        str(owner.id),
+        str(member.id),
+        str(owner.id),
+    ]
+    assert [event["sequence_number"] for event in events] == [5, 4, 3, 2, 1]
+    assert {event["grocery_item_id"] for event in events} == {item_id}
+    assert db_session.get(GroceryItem, UUID(item_id)) is None
+    assert db_session.query(GroceryActivityEvent).count() == 5
