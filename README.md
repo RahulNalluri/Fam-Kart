@@ -137,6 +137,13 @@ Messages contain identifiers and ordering information rather than a second copy 
 the grocery record. Mobile clients will refresh authoritative API data after
 receiving an event.
 
+Authenticated household members can open
+`WS /api/v1/households/{household_id}/ws` with their access token in the
+`Authorization: Bearer <token>` header. Tokens are intentionally rejected in query
+strings. Invalid authentication closes with code `4401`; unknown, inaccessible, or
+previously left households close with privacy-preserving code `4404`. The current
+endpoint keeps authorized connections open but does not broadcast events yet.
+
 ## Quick Start
 
 PowerShell:

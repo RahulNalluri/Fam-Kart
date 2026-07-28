@@ -5,6 +5,7 @@ from app.api.auth import router as auth_router
 from app.api.grocery_items import router as grocery_items_router
 from app.api.health import router as health_router
 from app.api.households import router as households_router
+from app.api.realtime import router as realtime_router
 from app.api.shopping_sessions import router as shopping_sessions_router
 from app.api.users import router as users_router
 from app.core.config import settings
@@ -40,6 +41,7 @@ def create_app() -> FastAPI:
     app.include_router(households_router)
     app.include_router(shopping_sessions_router)
     app.include_router(grocery_items_router)
+    app.include_router(realtime_router)
     app.include_router(users_router)
     return app
 

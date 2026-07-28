@@ -1,8 +1,13 @@
-from enum import StrEnum
+from enum import IntEnum, StrEnum
 from typing import Literal
 from uuid import UUID
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
+
+
+class RealtimeCloseCode(IntEnum):
+    AUTHENTICATION_REQUIRED = 4401
+    HOUSEHOLD_NOT_FOUND = 4404
 
 
 class RealtimeEventType(StrEnum):
