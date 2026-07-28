@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import Generator
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
@@ -14,7 +15,13 @@ from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
 from app.models import Household, HouseholdMember, HouseholdRole, User
-from app.schemas.realtime import RealtimeCloseCode
+from app.schemas.realtime import (
+    GroceryItemRealtimePayload,
+    RealtimeCloseCode,
+    RealtimeEventEnvelope,
+    RealtimeEventType,
+)
+from app.services.realtime_connections import connection_manager
 
 
 @pytest.fixture
@@ -98,6 +105,18 @@ def authorization_header(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+async def broadcast_after_registration(
+    household_id: UUID,
+    user_id: UUID,
+    event: RealtimeEventEnvelope,
+) -> int:
+    for _ in range(100):
+        if await connection_manager.connection_count(household_id, user_id) == 1:
+            return await connection_manager.broadcast(household_id, event)
+        await asyncio.sleep(0.001)
+    raise AssertionError("WebSocket connection was not registered.")
+
+
 def assert_connection_rejected(
     client: TestClient,
     url: str,
@@ -137,6 +156,48 @@ def test_current_household_member_can_connect_and_disconnect_cleanly(
         headers=authorization_header(create_access_token(user.id)),
     ) as websocket:
         websocket.send_text("connection remains open")
+
+
+def test_authenticated_connection_receives_local_household_broadcast(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user = create_user(db_session, email="realtime-local-broadcast@example.com")
+    household = create_household(db_session, name="Local Realtime Broadcast")
+    add_membership(
+        db_session,
+        household=household,
+        user=user,
+        role=HouseholdRole.MEMBER,
+    )
+    event = RealtimeEventEnvelope(
+        event_id=uuid4(),
+        event_type=RealtimeEventType.GROCERY_ITEM_ADDED,
+        household_id=household.id,
+        occurred_at=datetime.now(UTC),
+        payload=GroceryItemRealtimePayload(
+            shopping_session_id=uuid4(),
+            grocery_item_id=uuid4(),
+            actor_user_id=user.id,
+            item_name="Milk",
+            sequence_number=1,
+        ),
+    )
+
+    with client.websocket_connect(
+        websocket_url(household.id),
+        headers=authorization_header(create_access_token(user.id)),
+    ) as websocket:
+        delivered = websocket.portal.call(
+            broadcast_after_registration,
+            household.id,
+            user.id,
+            event,
+        )
+        received = websocket.receive_json()
+
+    assert delivered == 1
+    assert received == event.model_dump(mode="json")
 
 
 @pytest.mark.parametrize(

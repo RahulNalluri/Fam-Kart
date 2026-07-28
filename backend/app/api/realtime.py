@@ -13,6 +13,7 @@ from app.services.realtime import (
     RealtimeHouseholdNotFoundError,
     authenticate_realtime_connection,
 )
+from app.services.realtime_connections import connection_manager
 
 router = APIRouter(tags=["real-time"])
 
@@ -27,7 +28,7 @@ async def household_realtime_connection(
     db: Annotated[Session, Depends(get_db)],
 ) -> None:
     try:
-        authenticate_realtime_connection(
+        user = authenticate_realtime_connection(
             websocket.headers.get("authorization"),
             household_id,
             UserRepository(db),
@@ -51,10 +52,14 @@ async def household_realtime_connection(
         db.close()
 
     await websocket.accept()
-    while True:
-        message = await websocket.receive()
-        if message["type"] == "websocket.disconnect":
-            return
+    await connection_manager.register(household_id, user.id, websocket)
+    try:
+        while True:
+            message = await websocket.receive()
+            if message["type"] == "websocket.disconnect":
+                return
+    finally:
+        await connection_manager.unregister(household_id, user.id, websocket)
 
 
 async def _reject_connection(

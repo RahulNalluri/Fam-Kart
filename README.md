@@ -142,7 +142,14 @@ Authenticated household members can open
 `Authorization: Bearer <token>` header. Tokens are intentionally rejected in query
 strings. Invalid authentication closes with code `4401`; unknown, inaccessible, or
 previously left households close with privacy-preserving code `4404`. The current
-endpoint keeps authorized connections open but does not broadcast events yet.
+endpoint keeps authorized connections open, but grocery mutations do not publish
+events yet.
+
+An in-memory connection manager now tracks authenticated sockets by household and
+user, supports multiple devices, broadcasts validated event JSON only within the
+target household, and removes disconnected or failed sockets. This local registry
+is process-specific; Redis Pub/Sub is still required to coordinate multiple backend
+containers.
 
 ## Quick Start
 
