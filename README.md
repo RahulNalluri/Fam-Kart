@@ -164,7 +164,14 @@ environments cannot share a channel. Publishing and subscribing are separate
 modules. The event publisher now serializes validated event envelopes, sends them
 to the correct household channel, reports the number of active Redis subscribers,
 and translates Redis connection failures into a service-level error. Grocery
-mutations do not call the publisher yet, and the subscriber is not implemented.
+mutations do not call the publisher yet.
+
+The Redis event subscriber listens to one household channel, validates each event
+envelope and its household ownership, and forwards accepted events to the local
+WebSocket connection manager. Malformed and cross-household messages are ignored,
+Redis failures become service-level errors, and Pub/Sub resources close during
+normal completion, failure, or cancellation. Automatic subscriber task lifecycle
+management is not connected to WebSocket registrations yet.
 
 ## Quick Start
 
