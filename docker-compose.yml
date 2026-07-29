@@ -37,6 +37,7 @@ services:
       DEBUG: "true"
       CORS_ORIGINS: '["*"]'
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-familykart}:${POSTGRES_PASSWORD:-familykart}@postgres:5432/${POSTGRES_DB:-familykart}
+      REDIS_URL: redis://redis:6379/0
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     depends_on:

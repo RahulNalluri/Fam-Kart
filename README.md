@@ -151,6 +151,11 @@ target household, and removes disconnected or failed sockets. This local registr
 is process-specific; Redis Pub/Sub is still required to coordinate multiple backend
 containers.
 
+The backend now owns one asynchronous Redis client per application process. Its
+connection URL is validated from `REDIS_URL`, Docker routes it to the Redis service,
+and FastAPI closes its connection pool during shutdown. Redis availability can be
+checked through `GET /api/v1/health/redis`. Pub/Sub messaging is not implemented yet.
+
 ## Quick Start
 
 PowerShell:

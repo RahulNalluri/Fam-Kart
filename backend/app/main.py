@@ -1,3 +1,6 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -12,6 +15,17 @@ from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
 from app.core.logging import configure_logging
 from app.core.middleware import RequestIDMiddleware
+from app.core.redis import create_redis_client
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    redis_client = create_redis_client()
+    app.state.redis = redis_client
+    try:
+        yield
+    finally:
+        await redis_client.aclose()
 
 
 def create_app() -> FastAPI:
@@ -24,6 +38,7 @@ def create_app() -> FastAPI:
         docs_url="/docs",
         redoc_url="/redoc",
         openapi_url="/openapi.json",
+        lifespan=lifespan,
     )
 
     app.add_middleware(RequestIDMiddleware)

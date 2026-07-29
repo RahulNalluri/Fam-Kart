@@ -10,3 +10,8 @@ class HealthResponse(BaseModel):
 class DatabaseHealthResponse(BaseModel):
     status: str
     database: str
+
+
+class RedisHealthResponse(BaseModel):
+    status: str
+    cache: str

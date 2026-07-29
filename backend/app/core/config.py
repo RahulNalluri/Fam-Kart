@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, SecretStr
+from pydantic import Field, RedisDsn, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Environment = Literal["development", "testing", "production"]
@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     database_url: str = (
         "postgresql+psycopg://familykart:familykart@localhost:5432/familykart"
     )
+    redis_url: RedisDsn = RedisDsn("redis://localhost:6379/0")
 
     jwt_secret_key: SecretStr = Field(min_length=32)
     jwt_algorithm: JwtAlgorithm = "HS256"

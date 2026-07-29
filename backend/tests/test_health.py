@@ -3,9 +3,11 @@ import json
 from collections.abc import Generator, Mapping
 from typing import Any
 
+from redis.exceptions import ConnectionError as RedisConnectionError
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.types import Message, Scope
 
+from app.core.redis import get_redis
 from app.db.session import get_db
 from app.main import app
 
@@ -142,4 +144,40 @@ def test_database_health_returns_standardized_error_when_database_fails() -> Non
     assert status_code == 503
     assert body["error"]["code"] == "http_503"
     assert body["error"]["message"] == "Database is unavailable"
+    assert "request_id" in body["error"]
+
+
+class HealthyRedis:
+    async def ping(self) -> bool:
+        return True
+
+
+class UnavailableRedis:
+    async def ping(self) -> bool:
+        raise RedisConnectionError("redis unavailable")
+
+
+def test_redis_health_returns_http_200_when_redis_is_reachable() -> None:
+    app.dependency_overrides[get_redis] = lambda: HealthyRedis()
+
+    try:
+        status_code, _, body = get("/api/v1/health/redis")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert status_code == 200
+    assert body == {"status": "healthy", "cache": "redis"}
+
+
+def test_redis_health_returns_standardized_error_when_redis_fails() -> None:
+    app.dependency_overrides[get_redis] = lambda: UnavailableRedis()
+
+    try:
+        status_code, _, body = get("/api/v1/health/redis")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert status_code == 503
+    assert body["error"]["code"] == "http_503"
+    assert body["error"]["message"] == "Redis is unavailable"
     assert "request_id" in body["error"]

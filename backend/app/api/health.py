@@ -1,13 +1,20 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from redis.asyncio import Redis
+from redis.exceptions import RedisError
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.redis import get_redis
 from app.db.session import get_db
-from app.schemas.common import DatabaseHealthResponse, HealthResponse
-from app.services.health import is_database_healthy
+from app.schemas.common import (
+    DatabaseHealthResponse,
+    HealthResponse,
+    RedisHealthResponse,
+)
+from app.services.health import is_database_healthy, is_redis_healthy
 
 router = APIRouter(prefix="/api/v1", tags=["health"])
 
@@ -40,3 +47,24 @@ def read_database_health(
         )
 
     return DatabaseHealthResponse(status="healthy", database="postgresql")
+
+
+@router.get("/health/redis", response_model=RedisHealthResponse)
+async def read_redis_health(
+    redis_client: Annotated[Redis, Depends(get_redis)],
+) -> RedisHealthResponse:
+    try:
+        is_healthy = await is_redis_healthy(redis_client)
+    except RedisError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Redis is unavailable",
+        ) from exc
+
+    if not is_healthy:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Redis is unavailable",
+        )
+
+    return RedisHealthResponse(status="healthy", cache="redis")
