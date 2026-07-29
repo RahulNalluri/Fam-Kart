@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import suppress
 from typing import Protocol, cast
@@ -32,12 +33,15 @@ async def subscribe_to_household_events(
     household_id: UUID,
     connection_manager: RealtimeConnectionManager,
     config: Settings = settings,
+    ready_event: asyncio.Event | None = None,
 ) -> None:
     channel = household_event_channel(household_id, config)
     pubsub = cast(RealtimePubSub, redis_client.pubsub())
 
     try:
         await pubsub.subscribe(channel)
+        if ready_event is not None:
+            ready_event.set()
         async for message in pubsub.listen():
             event = _validate_household_message(message, household_id)
             if event is not None:

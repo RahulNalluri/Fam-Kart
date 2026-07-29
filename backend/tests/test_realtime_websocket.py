@@ -1,6 +1,7 @@
 import asyncio
 from collections.abc import Generator
 from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock, Mock
 from uuid import UUID, uuid4
 
 import pytest
@@ -10,6 +11,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 from starlette.websockets import WebSocketDisconnect
 
+from app.api.realtime import get_realtime_subscription_coordinator
 from app.core.security import create_access_token, create_refresh_token
 from app.db.base import Base
 from app.db.session import get_db
@@ -22,6 +24,10 @@ from app.schemas.realtime import (
     RealtimeEventType,
 )
 from app.services.realtime_connections import connection_manager
+from app.services.realtime_subscription_coordinator import (
+    RealtimeSubscriptionCoordinator,
+    RealtimeSubscriptionStartError,
+)
 
 
 @pytest.fixture
@@ -40,11 +46,25 @@ def db_session() -> Generator[Session, None, None]:
 
 
 @pytest.fixture
-def client(db_session: Session) -> Generator[TestClient, None, None]:
+def subscription_coordinator() -> RealtimeSubscriptionCoordinator:
+    coordinator = Mock(spec=RealtimeSubscriptionCoordinator)
+    coordinator.acquire = AsyncMock()
+    coordinator.release = AsyncMock()
+    return coordinator
+
+
+@pytest.fixture
+def client(
+    db_session: Session,
+    subscription_coordinator: RealtimeSubscriptionCoordinator,
+) -> Generator[TestClient, None, None]:
     def override_db() -> Generator[Session, None, None]:
         yield db_session
 
     app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[get_realtime_subscription_coordinator] = (
+        lambda: subscription_coordinator
+    )
     try:
         with TestClient(app) as test_client:
             yield test_client
@@ -138,6 +158,7 @@ def test_current_household_member_can_connect_and_disconnect_cleanly(
     client: TestClient,
     db_session: Session,
     role: HouseholdRole,
+    subscription_coordinator: RealtimeSubscriptionCoordinator,
 ) -> None:
     user = create_user(
         db_session,
@@ -156,6 +177,37 @@ def test_current_household_member_can_connect_and_disconnect_cleanly(
         headers=authorization_header(create_access_token(user.id)),
     ) as websocket:
         websocket.send_text("connection remains open")
+
+    subscription_coordinator.acquire.assert_awaited_once_with(household.id)
+    subscription_coordinator.release.assert_awaited_once_with(household.id)
+
+
+def test_subscription_start_failure_closes_as_temporarily_unavailable(
+    client: TestClient,
+    db_session: Session,
+    subscription_coordinator: RealtimeSubscriptionCoordinator,
+) -> None:
+    user = create_user(db_session, email="realtime-redis-unavailable@example.com")
+    household = create_household(db_session, name="Redis Unavailable")
+    add_membership(
+        db_session,
+        household=household,
+        user=user,
+        role=HouseholdRole.MEMBER,
+    )
+    subscription_coordinator.acquire.side_effect = RealtimeSubscriptionStartError(
+        "redis unavailable",
+    )
+
+    assert_connection_rejected(
+        client,
+        websocket_url(household.id),
+        headers=authorization_header(create_access_token(user.id)),
+        expected_code=RealtimeCloseCode.SERVICE_UNAVAILABLE,
+        expected_reason="Real-time service unavailable.",
+    )
+
+    subscription_coordinator.release.assert_not_awaited()
 
 
 def test_authenticated_connection_receives_local_household_broadcast(

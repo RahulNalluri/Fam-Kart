@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, WebSocket
@@ -14,11 +14,25 @@ from app.services.realtime import (
     authenticate_realtime_connection,
 )
 from app.services.realtime_connections import connection_manager
+from app.services.realtime_subscription_coordinator import (
+    RealtimeSubscriptionCoordinator,
+    RealtimeSubscriptionStartError,
+)
 
 router = APIRouter(tags=["real-time"])
 
 AUTHENTICATION_REQUIRED_REASON = "Authentication required."
 HOUSEHOLD_NOT_FOUND_REASON = "Household not found."
+SERVICE_UNAVAILABLE_REASON = "Real-time service unavailable."
+
+
+def get_realtime_subscription_coordinator(
+    websocket: WebSocket,
+) -> RealtimeSubscriptionCoordinator:
+    return cast(
+        RealtimeSubscriptionCoordinator,
+        websocket.app.state.realtime_subscriptions,
+    )
 
 
 @router.websocket("/api/v1/households/{household_id}/ws")
@@ -26,6 +40,10 @@ async def household_realtime_connection(
     websocket: WebSocket,
     household_id: UUID,
     db: Annotated[Session, Depends(get_db)],
+    subscription_coordinator: Annotated[
+        RealtimeSubscriptionCoordinator,
+        Depends(get_realtime_subscription_coordinator),
+    ],
 ) -> None:
     try:
         user = authenticate_realtime_connection(
@@ -53,12 +71,25 @@ async def household_realtime_connection(
 
     await websocket.accept()
     await connection_manager.register(household_id, user.id, websocket)
+    subscription_acquired = False
     try:
+        try:
+            await subscription_coordinator.acquire(household_id)
+            subscription_acquired = True
+        except RealtimeSubscriptionStartError:
+            await websocket.close(
+                code=int(RealtimeCloseCode.SERVICE_UNAVAILABLE),
+                reason=SERVICE_UNAVAILABLE_REASON,
+            )
+            return
+
         while True:
             message = await websocket.receive()
             if message["type"] == "websocket.disconnect":
                 return
     finally:
+        if subscription_acquired:
+            await subscription_coordinator.release(household_id)
         await connection_manager.unregister(household_id, user.id, websocket)
 
 

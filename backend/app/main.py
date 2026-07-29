@@ -16,15 +16,25 @@ from app.core.exceptions import register_exception_handlers
 from app.core.logging import configure_logging
 from app.core.middleware import RequestIDMiddleware
 from app.core.redis import create_redis_client
+from app.services.realtime_connections import connection_manager
+from app.services.realtime_subscription_coordinator import (
+    RealtimeSubscriptionCoordinator,
+)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     redis_client = create_redis_client()
+    subscription_coordinator = RealtimeSubscriptionCoordinator(
+        redis_client,
+        connection_manager,
+    )
     app.state.redis = redis_client
+    app.state.realtime_subscriptions = subscription_coordinator
     try:
         yield
     finally:
+        await subscription_coordinator.shutdown()
         await redis_client.aclose()
 
 

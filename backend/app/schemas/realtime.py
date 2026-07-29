@@ -6,6 +6,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validato
 
 
 class RealtimeCloseCode(IntEnum):
+    SERVICE_UNAVAILABLE = 1013
     AUTHENTICATION_REQUIRED = 4401
     HOUSEHOLD_NOT_FOUND = 4404
 

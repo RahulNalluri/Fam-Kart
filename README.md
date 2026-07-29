@@ -170,8 +170,14 @@ The Redis event subscriber listens to one household channel, validates each even
 envelope and its household ownership, and forwards accepted events to the local
 WebSocket connection manager. Malformed and cross-household messages are ignored,
 Redis failures become service-level errors, and Pub/Sub resources close during
-normal completion, failure, or cancellation. Automatic subscriber task lifecycle
-management is not connected to WebSocket registrations yet.
+normal completion, failure, or cancellation.
+
+Each backend process now coordinates its own household subscriptions. The first
+local WebSocket connection starts and awaits one Redis subscriber; additional
+devices in that household share it through reference counting. The final local
+disconnect cancels the task, and application shutdown stops every subscriber
+before closing Redis. Separate backend processes subscribe independently, allowing
+one published household event to reach WebSockets connected to any backend.
 
 ## Quick Start
 

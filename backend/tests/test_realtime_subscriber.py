@@ -101,6 +101,7 @@ def test_valid_event_is_forwarded_from_exact_household_channel() -> None:
         environment="testing",
         redis_channel_prefix="familykart-test",
     )
+    ready_event = asyncio.Event()
 
     asyncio.run(
         subscribe_to_household_events(
@@ -108,6 +109,7 @@ def test_valid_event_is_forwarded_from_exact_household_channel() -> None:
             household_id,
             manager,
             config,
+            ready_event,
         ),
     )
 
@@ -115,6 +117,7 @@ def test_valid_event_is_forwarded_from_exact_household_channel() -> None:
     assert pubsub.subscribed_channels == [expected_channel]
     assert pubsub.unsubscribed_channels == [expected_channel]
     assert pubsub.is_closed
+    assert ready_event.is_set()
     manager.broadcast.assert_awaited_once_with(household_id, event)
 
 
