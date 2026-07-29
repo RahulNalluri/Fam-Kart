@@ -156,6 +156,13 @@ connection URL is validated from `REDIS_URL`, Docker routes it to the Redis serv
 and FastAPI closes its connection pool during shutdown. Redis availability can be
 checked through `GET /api/v1/health/redis`. Pub/Sub messaging is not implemented yet.
 
+Household real-time messages use deterministic, environment-isolated Redis channel
+names such as
+`familykart:development:households:<household-id>:events`. The same household and
+environment always resolve to the same channel, while different households or
+environments cannot share a channel. Publishing and subscribing are separate
+modules and are not implemented yet.
+
 ## Quick Start
 
 PowerShell:

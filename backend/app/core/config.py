@@ -25,6 +25,10 @@ class Settings(BaseSettings):
         "postgresql+psycopg://familykart:familykart@localhost:5432/familykart"
     )
     redis_url: RedisDsn = RedisDsn("redis://localhost:6379/0")
+    redis_channel_prefix: str = Field(
+        default="familykart",
+        pattern=r"^[a-z][a-z0-9-]{0,31}$",
+    )
 
     jwt_secret_key: SecretStr = Field(min_length=32)
     jwt_algorithm: JwtAlgorithm = "HS256"
