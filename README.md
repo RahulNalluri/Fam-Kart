@@ -161,7 +161,10 @@ names such as
 `familykart:development:households:<household-id>:events`. The same household and
 environment always resolve to the same channel, while different households or
 environments cannot share a channel. Publishing and subscribing are separate
-modules and are not implemented yet.
+modules. The event publisher now serializes validated event envelopes, sends them
+to the correct household channel, reports the number of active Redis subscribers,
+and translates Redis connection failures into a service-level error. Grocery
+mutations do not call the publisher yet, and the subscriber is not implemented.
 
 ## Quick Start
 
