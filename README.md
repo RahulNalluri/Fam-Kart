@@ -218,6 +218,13 @@ reports connection and close states, rejects malformed or cross-household events
 and detaches all handlers during local disconnect. Authentication storage,
 automatic reconnection, and React Query invalidation remain separate modules.
 
+TanStack React Query is now provided at the Expo application root. Stable grocery
+query keys isolate cached data by household and shopping session. Validated
+real-time events invalidate only the affected session's item list and activity
+feed; edit, complete, and reopen events also invalidate the affected item details,
+while delete events remove stale item details. Active queries can therefore refetch
+authoritative API data without changing unrelated household or session caches.
+
 ## Quick Start
 
 PowerShell:
