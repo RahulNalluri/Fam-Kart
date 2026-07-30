@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react-native";
 import { ReactNode } from "react";
+import { AppState } from "react-native";
 
 import { groceryQueryKeys } from "../src/features/grocery/queryKeys";
 import {
@@ -79,6 +80,10 @@ function buildHarness() {
 }
 
 describe("useHouseholdRealtime", () => {
+  beforeEach(() => {
+    AppState.currentState = "active";
+  });
+
   it("stays disconnected until household credentials are available", () => {
     const { clientFactory, wrapper } = buildHarness();
 

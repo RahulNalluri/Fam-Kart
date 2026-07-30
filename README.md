@@ -245,6 +245,19 @@ affected shopping session. The tracker keeps a bounded event-ID history and rese
 after reconnection, when the household API refresh establishes a new ordering
 baseline.
 
+A complete mobile integration suite now drives raw WebSocket JSON through the real
+client validator, lifecycle hook, ordering tracker, and React Query synchronizer.
+It verifies successful cache updates, malformed and cross-household rejection,
+duplicate and stale suppression, gap recovery, reconnection refresh, and ordering
+reset without opening a network connection during mobile unit tests.
+
+The mobile lifecycle hook now follows React Native AppState transitions. It opens
+the household socket only while the app is active, disconnects once during
+inactive/background transitions, ignores late background events, and reconnects
+with a household cache refresh when the app returns to the foreground. Repeated
+state notifications cannot create duplicate sockets, and unmount removes both the
+AppState listener and WebSocket connection.
+
 ## Quick Start
 
 PowerShell:

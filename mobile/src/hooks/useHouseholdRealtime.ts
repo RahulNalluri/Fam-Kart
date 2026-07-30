@@ -1,5 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
+import { AppState, AppStateStatus } from "react-native";
 
 import {
   refreshHouseholdGroceryQueries,
@@ -22,21 +23,32 @@ export type HouseholdRealtimeClientFactory = (
   options: HouseholdRealtimeClientOptions,
 ) => HouseholdRealtimeConnection;
 
+export interface RealtimeAppState {
+  currentState: AppStateStatus;
+  addEventListener(
+    type: "change",
+    listener: (state: AppStateStatus) => void,
+  ): { remove(): void };
+}
+
 export type UseHouseholdRealtimeOptions = {
   householdId: string | null;
   accessToken: string | null;
   onError?: (error: unknown) => void;
   clientFactory?: HouseholdRealtimeClientFactory;
+  appState?: RealtimeAppState;
 };
 
 const createHouseholdRealtimeClient: HouseholdRealtimeClientFactory = (options) =>
   new HouseholdRealtimeClient(options);
+const mobileAppState: RealtimeAppState = AppState;
 
 export function useHouseholdRealtime({
   householdId,
   accessToken,
   onError,
   clientFactory = createHouseholdRealtimeClient,
+  appState = mobileAppState,
 }: UseHouseholdRealtimeOptions): RealtimeConnectionState {
   const queryClient = useQueryClient();
   const errorHandlerRef = useRef(onError);
@@ -51,6 +63,7 @@ export function useHouseholdRealtime({
     }
 
     let active = true;
+    let appIsActive = appState.currentState === "active";
     const eventOrdering = new RealtimeEventOrderingTracker();
     const reportFailure = (operation: Promise<void>) => {
       void operation.catch((error: unknown) => {
@@ -66,12 +79,12 @@ export function useHouseholdRealtime({
         householdId,
         accessToken,
         onStateChange: (state) => {
-          if (active) {
+          if (active && appIsActive) {
             setConnectionState(state);
           }
         },
         onEvent: (event) => {
-          if (!active) {
+          if (!active || !appIsActive) {
             return;
           }
 
@@ -89,7 +102,7 @@ export function useHouseholdRealtime({
           }
         },
         onReconnect: () => {
-          if (active) {
+          if (active && appIsActive) {
             eventOrdering.reset();
             reportFailure(refreshHouseholdGroceryQueries(queryClient, householdId));
           }
@@ -101,12 +114,34 @@ export function useHouseholdRealtime({
       return;
     }
 
-    client.connect();
+    const appStateSubscription = appState.addEventListener("change", (nextState) => {
+      const nextIsActive = nextState === "active";
+      if (!active || nextIsActive === appIsActive) {
+        return;
+      }
+
+      appIsActive = nextIsActive;
+      if (appIsActive) {
+        eventOrdering.reset();
+        reportFailure(refreshHouseholdGroceryQueries(queryClient, householdId));
+        client.connect();
+      } else {
+        client.disconnect();
+        setConnectionState("disconnected");
+      }
+    });
+
+    if (appIsActive) {
+      client.connect();
+    } else {
+      setConnectionState("disconnected");
+    }
     return () => {
       active = false;
+      appStateSubscription.remove();
       client.disconnect();
     };
-  }, [accessToken, clientFactory, householdId, queryClient]);
+  }, [accessToken, appState, clientFactory, householdId, queryClient]);
 
   return connectionState;
 }
