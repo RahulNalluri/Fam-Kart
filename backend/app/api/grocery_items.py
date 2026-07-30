@@ -1,10 +1,20 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Query,
+    Response,
+    status,
+)
+from redis.asyncio import Redis
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user
+from app.core.redis import get_redis
 from app.db.session import get_db
 from app.models.user import User
 from app.repositories.grocery_activity_events import GroceryActivityEventRepository
@@ -32,11 +42,26 @@ from app.services.grocery_items import (
     reopen_grocery_item,
     update_grocery_item,
 )
+from app.services.realtime_events import build_realtime_event
+from app.services.realtime_publisher import try_publish_realtime_event
 
 router = APIRouter(
     prefix=("/api/v1/households/{household_id}/shopping-sessions/{session_id}/items"),
     tags=["grocery items"],
 )
+
+
+def _schedule_committed_realtime_event(
+    background_tasks: BackgroundTasks,
+    redis_client: Redis,
+    item_repository: GroceryItemRepository,
+) -> None:
+    activity_event = item_repository.take_committed_activity_event()
+    if activity_event is None:
+        return
+
+    event = build_realtime_event(activity_event)
+    background_tasks.add_task(try_publish_realtime_event, redis_client, event)
 
 
 @router.post(
@@ -50,14 +75,17 @@ def create_current_session_grocery_item(
     data: CreateGroceryItemRequest,
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
+    redis_client: Annotated[Redis, Depends(get_redis)],
+    background_tasks: BackgroundTasks,
 ) -> GroceryItemResponse:
+    item_repository = GroceryItemRepository(db)
     try:
         item = create_grocery_item(
             household_id,
             session_id,
             data,
             current_user,
-            GroceryItemRepository(db),
+            item_repository,
             ShoppingSessionRepository(db),
             HouseholdMemberRepository(db),
         )
@@ -87,6 +115,11 @@ def create_current_session_grocery_item(
             status_code=status.HTTP_409_CONFLICT,
             detail="This item is already pending in this shopping session.",
         ) from error
+    _schedule_committed_realtime_event(
+        background_tasks,
+        redis_client,
+        item_repository,
+    )
     return GroceryItemResponse.model_validate(item)
 
 
@@ -156,7 +189,10 @@ def update_current_session_grocery_item(
     data: UpdateGroceryItemRequest,
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
+    redis_client: Annotated[Redis, Depends(get_redis)],
+    background_tasks: BackgroundTasks,
 ) -> GroceryItemResponse:
+    item_repository = GroceryItemRepository(db)
     try:
         item = update_grocery_item(
             household_id,
@@ -164,7 +200,7 @@ def update_current_session_grocery_item(
             item_id,
             data,
             current_user,
-            GroceryItemRepository(db),
+            item_repository,
             ShoppingSessionRepository(db),
             HouseholdMemberRepository(db),
         )
@@ -199,6 +235,11 @@ def update_current_session_grocery_item(
             status_code=status.HTTP_409_CONFLICT,
             detail="This item is already pending in this shopping session.",
         ) from error
+    _schedule_committed_realtime_event(
+        background_tasks,
+        redis_client,
+        item_repository,
+    )
     return GroceryItemResponse.model_validate(item)
 
 
@@ -209,14 +250,17 @@ def complete_current_session_grocery_item(
     item_id: UUID,
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
+    redis_client: Annotated[Redis, Depends(get_redis)],
+    background_tasks: BackgroundTasks,
 ) -> GroceryItemResponse:
+    item_repository = GroceryItemRepository(db)
     try:
         item = complete_grocery_item(
             household_id,
             session_id,
             item_id,
             current_user,
-            GroceryItemRepository(db),
+            item_repository,
             ShoppingSessionRepository(db),
             HouseholdMemberRepository(db),
         )
@@ -237,6 +281,11 @@ def complete_current_session_grocery_item(
             ),
         ) from error
 
+    _schedule_committed_realtime_event(
+        background_tasks,
+        redis_client,
+        item_repository,
+    )
     return GroceryItemResponse.model_validate(item)
 
 
@@ -247,14 +296,17 @@ def reopen_current_session_grocery_item(
     item_id: UUID,
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
+    redis_client: Annotated[Redis, Depends(get_redis)],
+    background_tasks: BackgroundTasks,
 ) -> GroceryItemResponse:
+    item_repository = GroceryItemRepository(db)
     try:
         item = reopen_grocery_item(
             household_id,
             session_id,
             item_id,
             current_user,
-            GroceryItemRepository(db),
+            item_repository,
             ShoppingSessionRepository(db),
             HouseholdMemberRepository(db),
         )
@@ -280,6 +332,11 @@ def reopen_current_session_grocery_item(
             detail="This item is already pending in this shopping session.",
         ) from error
 
+    _schedule_committed_realtime_event(
+        background_tasks,
+        redis_client,
+        item_repository,
+    )
     return GroceryItemResponse.model_validate(item)
 
 
@@ -290,14 +347,17 @@ def delete_current_session_grocery_item(
     item_id: UUID,
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
+    redis_client: Annotated[Redis, Depends(get_redis)],
+    background_tasks: BackgroundTasks,
 ) -> Response:
+    item_repository = GroceryItemRepository(db)
     try:
         delete_grocery_item(
             household_id,
             session_id,
             item_id,
             current_user,
-            GroceryItemRepository(db),
+            item_repository,
             ShoppingSessionRepository(db),
             HouseholdMemberRepository(db),
         )
@@ -323,4 +383,9 @@ def delete_current_session_grocery_item(
             detail="Reopen this grocery item before deleting it.",
         ) from error
 
+    _schedule_committed_realtime_event(
+        background_tasks,
+        redis_client,
+        item_repository,
+    )
     return Response(status_code=status.HTTP_204_NO_CONTENT)

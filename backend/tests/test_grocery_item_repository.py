@@ -11,6 +11,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.db.base import Base
 from app.models import (
+    GroceryActivityType,
     GroceryItem,
     GroceryItemStatus,
     Household,
@@ -79,6 +80,11 @@ def test_repository_creates_pending_item_with_all_input_fields() -> None:
         assert item.assigned_to_user_id == user.id
         assert item.completed_by_user_id is None
         assert item.completed_at is None
+        activity_event = repository.take_committed_activity_event()
+        assert activity_event is not None
+        assert activity_event.event_type == GroceryActivityType.ITEM_ADDED
+        assert activity_event.grocery_item_id == item.id
+        assert repository.take_committed_activity_event() is None
     finally:
         db.close()
 
@@ -458,6 +464,9 @@ def test_repository_complete_is_idempotent_and_preserves_original_details() -> N
             completed_by_user_id=user.id,
             completed_at=original_time,
         )
+        activity_event = repository.take_committed_activity_event()
+        assert activity_event is not None
+        assert activity_event.event_type == GroceryActivityType.ITEM_COMPLETED
 
         repeated = repository.complete(
             item,
@@ -469,6 +478,7 @@ def test_repository_complete_is_idempotent_and_preserves_original_details() -> N
         assert repeated.completed_by_user_id == user.id
         assert repeated.completed_at is not None
         assert repeated.completed_at.replace(tzinfo=UTC) == original_time
+        assert repository.take_committed_activity_event() is None
     finally:
         db.close()
 
@@ -499,6 +509,9 @@ def test_repository_reopens_completed_item_and_is_idempotent() -> None:
             household_id=shopping_session.household_id,
             actor_user_id=user.id,
         )
+        activity_event = repository.take_committed_activity_event()
+        assert activity_event is not None
+        assert activity_event.event_type == GroceryActivityType.ITEM_REOPENED
         repeated = repository.reopen(
             reopened,
             household_id=shopping_session.household_id,
@@ -508,6 +521,7 @@ def test_repository_reopens_completed_item_and_is_idempotent() -> None:
         assert repeated.status == GroceryItemStatus.PENDING
         assert repeated.completed_by_user_id is None
         assert repeated.completed_at is None
+        assert repository.take_committed_activity_event() is None
     finally:
         db.close()
 

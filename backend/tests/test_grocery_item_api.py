@@ -1,14 +1,18 @@
+import json
 from collections.abc import Generator
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from unittest.mock import AsyncMock, Mock
 from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from redis.asyncio import Redis
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.core.redis import get_redis
 from app.core.security import create_access_token, hash_password
 from app.db.base import Base
 from app.db.session import get_db
@@ -24,6 +28,7 @@ from app.models import (
     ShoppingSessionStatus,
     User,
 )
+from app.schemas.realtime import RealtimeEventEnvelope
 
 
 @pytest.fixture
@@ -42,11 +47,22 @@ def db_session() -> Generator[Session, None, None]:
 
 
 @pytest.fixture
-def client(db_session: Session) -> Generator[TestClient, None, None]:
+def redis_client() -> Redis:
+    client = Mock(spec=Redis)
+    client.publish = AsyncMock(return_value=0)
+    return client
+
+
+@pytest.fixture
+def client(
+    db_session: Session,
+    redis_client: Redis,
+) -> Generator[TestClient, None, None]:
     def override_db() -> Generator[Session, None, None]:
         yield db_session
 
     app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[get_redis] = lambda: redis_client
     try:
         with TestClient(app) as test_client:
             yield test_client
@@ -1321,6 +1337,7 @@ def test_delete_item_rejects_malformed_item_id(
 def test_grocery_mutations_create_ordered_activity_without_idempotent_duplicates(
     client: TestClient,
     db_session: Session,
+    redis_client: Redis,
 ) -> None:
     owner = create_user(db_session, email="activity-api-owner@example.com")
     member = create_user(db_session, email="activity-api-member@example.com")
@@ -1415,6 +1432,49 @@ def test_grocery_mutations_create_ordered_activity_without_idempotent_duplicates
     assert [event["sequence_number"] for event in events] == [5, 4, 3, 2, 1]
     assert db_session.get(GroceryItem, UUID(item_id)) is None
     assert db_session.query(GroceryActivityEvent).count() == 5
+
+    assert redis_client.publish.await_count == 5
+    published_events = [
+        RealtimeEventEnvelope.model_validate_json(call.args[1])
+        for call in redis_client.publish.await_args_list
+    ]
+    assert [event.event_type.value for event in published_events] == [
+        "grocery.item_added",
+        "grocery.item_edited",
+        "grocery.item_completed",
+        "grocery.item_reopened",
+        "grocery.item_deleted",
+    ]
+    assert [event.payload.sequence_number for event in published_events] == [
+        1,
+        2,
+        3,
+        4,
+        5,
+    ]
+    assert [event.payload.item_name for event in published_events] == [
+        "Rice",
+        "Brown rice",
+        "Brown rice",
+        "Brown rice",
+        "Brown rice",
+    ]
+    assert [event.payload.actor_user_id for event in published_events] == [
+        owner.id,
+        member.id,
+        owner.id,
+        member.id,
+        owner.id,
+    ]
+    assert {event.payload.grocery_item_id for event in published_events} == {
+        UUID(item_id),
+    }
+    activity_ids = {event.id for event in db_session.query(GroceryActivityEvent).all()}
+    assert {event.event_id for event in published_events} == activity_ids
+    assert all(
+        json.loads(call.args[1])["household_id"] == str(household.id)
+        for call in redis_client.publish.await_args_list
+    )
 
 
 def test_activity_list_honors_limit(

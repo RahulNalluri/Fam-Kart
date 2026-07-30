@@ -17,6 +17,7 @@ from app.schemas.realtime import (
 from app.services.realtime_publisher import (
     RealtimeEventPublishError,
     publish_realtime_event,
+    try_publish_realtime_event,
 )
 
 
@@ -84,3 +85,24 @@ def test_publisher_translates_redis_failures() -> None:
         asyncio.run(publish_realtime_event(redis_client, build_event()))
 
     assert isinstance(error_info.value.__cause__, RedisConnectionError)
+
+
+def test_best_effort_publisher_reports_success() -> None:
+    redis_client = build_redis_client(subscriber_count=1)
+
+    published = asyncio.run(
+        try_publish_realtime_event(redis_client, build_event()),
+    )
+
+    assert published is True
+
+
+def test_best_effort_publisher_swallows_redis_failure() -> None:
+    redis_client = build_redis_client()
+    redis_client.publish.side_effect = RedisConnectionError("connection failed")
+
+    published = asyncio.run(
+        try_publish_realtime_event(redis_client, build_event()),
+    )
+
+    assert published is False

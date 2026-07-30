@@ -138,6 +138,11 @@ real-time event builder. It explicitly maps all five grocery mutations, reuses t
 activity record ID for stable event identity, preserves database ordering and
 timestamps, and performs no database writes or Redis publishing.
 
+Successful grocery add, edit, complete, reopen, and delete requests now schedule
+their exact committed activity event for Redis publication. Idempotent requests do
+not publish duplicate events, and Redis delivery failures are logged without
+rolling back or hiding the grocery change already committed to PostgreSQL.
+
 Messages contain identifiers and ordering information rather than a second copy of
 the grocery record. Mobile clients will refresh authoritative API data after
 receiving an event.

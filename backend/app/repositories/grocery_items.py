@@ -22,6 +22,12 @@ class DuplicatePendingGroceryItemError(ValueError):
 class GroceryItemRepository:
     def __init__(self, db: Session) -> None:
         self.db = db
+        self._committed_activity_event: GroceryActivityEvent | None = None
+
+    def take_committed_activity_event(self) -> GroceryActivityEvent | None:
+        activity_event = self._committed_activity_event
+        self._committed_activity_event = None
+        return activity_event
 
     def create(
         self,
@@ -35,6 +41,7 @@ class GroceryItemRepository:
         created_by_user_id: UUID,
         assigned_to_user_id: UUID | None,
     ) -> GroceryItem:
+        self._committed_activity_event = None
         try:
             if self.pending_name_exists(
                 shopping_session_id=shopping_session_id,
@@ -54,7 +61,7 @@ class GroceryItemRepository:
             )
             self.db.add(item)
             self.db.flush()
-            self._add_activity_event(
+            activity_event = self._add_activity_event(
                 household_id=household_id,
                 item=item,
                 actor_user_id=created_by_user_id,
@@ -71,6 +78,7 @@ class GroceryItemRepository:
             raise
 
         self.db.refresh(item)
+        self._committed_activity_event = activity_event
         return item
 
     def get_for_session(
@@ -125,6 +133,7 @@ class GroceryItemRepository:
         household_id: UUID,
         actor_user_id: UUID,
     ) -> GroceryItem:
+        self._committed_activity_event = None
         try:
             if self.pending_name_exists(
                 shopping_session_id=item.shopping_session_id,
@@ -133,7 +142,7 @@ class GroceryItemRepository:
             ):
                 raise DuplicatePendingGroceryItemError
 
-            self._add_activity_event(
+            activity_event = self._add_activity_event(
                 household_id=household_id,
                 item=item,
                 actor_user_id=actor_user_id,
@@ -150,6 +159,7 @@ class GroceryItemRepository:
             raise
 
         self.db.refresh(item)
+        self._committed_activity_event = activity_event
         return item
 
     def complete(
@@ -160,6 +170,7 @@ class GroceryItemRepository:
         completed_by_user_id: UUID,
         completed_at: datetime | None = None,
     ) -> GroceryItem:
+        self._committed_activity_event = None
         effective_completed_at = completed_at or datetime.now(UTC)
         try:
             result = self.db.execute(
@@ -181,7 +192,7 @@ class GroceryItemRepository:
 
         if getattr(result, "rowcount", 0) == 1:
             try:
-                self._add_activity_event(
+                activity_event = self._add_activity_event(
                     household_id=household_id,
                     item=item,
                     actor_user_id=completed_by_user_id,
@@ -193,6 +204,7 @@ class GroceryItemRepository:
                 raise
 
             self.db.refresh(item)
+            self._committed_activity_event = activity_event
             return item
 
         self.db.rollback()
@@ -208,6 +220,7 @@ class GroceryItemRepository:
         household_id: UUID,
         actor_user_id: UUID,
     ) -> GroceryItem:
+        self._committed_activity_event = None
         try:
             if self.pending_name_exists(
                 shopping_session_id=item.shopping_session_id,
@@ -240,7 +253,7 @@ class GroceryItemRepository:
 
         if getattr(result, "rowcount", 0) == 1:
             try:
-                self._add_activity_event(
+                activity_event = self._add_activity_event(
                     household_id=household_id,
                     item=item,
                     actor_user_id=actor_user_id,
@@ -252,6 +265,7 @@ class GroceryItemRepository:
                 raise
 
             self.db.refresh(item)
+            self._committed_activity_event = activity_event
             return item
 
         self.db.rollback()
@@ -267,8 +281,9 @@ class GroceryItemRepository:
         household_id: UUID,
         actor_user_id: UUID,
     ) -> None:
+        self._committed_activity_event = None
         try:
-            self._add_activity_event(
+            activity_event = self._add_activity_event(
                 household_id=household_id,
                 item=item,
                 actor_user_id=actor_user_id,
@@ -279,6 +294,7 @@ class GroceryItemRepository:
         except Exception:
             self.db.rollback()
             raise
+        self._committed_activity_event = activity_event
 
     def list_for_session(self, shopping_session_id: UUID) -> list[GroceryItem]:
         statement = (
@@ -299,7 +315,7 @@ class GroceryItemRepository:
         item: GroceryItem,
         actor_user_id: UUID,
         event_type: GroceryActivityType,
-    ) -> None:
+    ) -> GroceryActivityEvent:
         sequence_number = self.db.scalar(
             select(
                 func.coalesce(
@@ -314,17 +330,17 @@ class GroceryItemRepository:
         if sequence_number is None:
             raise RuntimeError("Could not allocate grocery activity sequence.")
 
-        self.db.add(
-            GroceryActivityEvent(
-                household_id=household_id,
-                shopping_session_id=item.shopping_session_id,
-                grocery_item_id=item.id,
-                actor_user_id=actor_user_id,
-                event_type=event_type,
-                item_name=item.name,
-                sequence_number=sequence_number,
-            ),
+        activity_event = GroceryActivityEvent(
+            household_id=household_id,
+            shopping_session_id=item.shopping_session_id,
+            grocery_item_id=item.id,
+            actor_user_id=actor_user_id,
+            event_type=event_type,
+            item_name=item.name,
+            sequence_number=sequence_number,
         )
+        self.db.add(activity_event)
+        return activity_event
 
 
 class GroceryItemTransitionError(ValueError):
