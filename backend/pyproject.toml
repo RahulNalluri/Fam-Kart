@@ -54,5 +54,8 @@ cache_dir = "../cache/mypy"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra -p no:asyncio -p no:anyio"
+addopts = '-ra -p no:asyncio -p no:anyio -m "not redis_integration"'
 cache_dir = "../cache/pytest"
+markers = [
+    "redis_integration: tests that require a reachable Redis server",
+]
