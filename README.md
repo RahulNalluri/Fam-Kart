@@ -211,6 +211,13 @@ committed activity is published through Redis and received as the same validated
 event by both connections. The event identity is also matched to the activity row
 stored in the database.
 
+The mobile foundation now includes a household WebSocket client. It derives
+`ws://` or `wss://` endpoints from `EXPO_PUBLIC_API_URL`, authenticates through the
+`Authorization` header, validates the versioned grocery event contract with Zod,
+reports connection and close states, rejects malformed or cross-household events,
+and detaches all handlers during local disconnect. Authentication storage,
+automatic reconnection, and React Query invalidation remain separate modules.
+
 ## Quick Start
 
 PowerShell:

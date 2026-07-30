@@ -1,5 +1,7 @@
 import axios from "axios";
 
+export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:8000";
+
 export type HealthResponse = {
   status: "healthy";
   service: string;
@@ -7,7 +9,7 @@ export type HealthResponse = {
 };
 
 const api = axios.create({
-  baseURL: process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:8000",
+  baseURL: API_BASE_URL,
   timeout: 5000,
 });
 
