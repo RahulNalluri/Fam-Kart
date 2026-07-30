@@ -238,6 +238,13 @@ for that household after reconnection, replaces the connection when credentials 
 household change, and disconnects on unmount. Late callbacks from an obsolete
 client are ignored.
 
+Mobile real-time processing now tracks event IDs and per-session sequence numbers.
+Repeated event IDs and stale sequence numbers are ignored, consecutive events use
+targeted cache synchronization, and a detected sequence gap refreshes the complete
+affected shopping session. The tracker keeps a bounded event-ID history and resets
+after reconnection, when the household API refresh establishes a new ordering
+baseline.
+
 ## Quick Start
 
 PowerShell:

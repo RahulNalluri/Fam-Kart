@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 
 import {
   refreshHouseholdGroceryQueries,
+  refreshShoppingSessionGroceryQueries,
   synchronizeGroceryRealtimeEvent,
 } from "../features/grocery/realtimeSynchronization";
 import {
@@ -10,6 +11,7 @@ import {
   HouseholdRealtimeClientOptions,
   RealtimeConnectionState,
 } from "../services/realtime";
+import { RealtimeEventOrderingTracker } from "../services/realtimeEventOrdering";
 
 export interface HouseholdRealtimeConnection {
   connect(): void;
@@ -49,6 +51,7 @@ export function useHouseholdRealtime({
     }
 
     let active = true;
+    const eventOrdering = new RealtimeEventOrderingTracker();
     const reportFailure = (operation: Promise<void>) => {
       void operation.catch((error: unknown) => {
         if (active) {
@@ -68,12 +71,26 @@ export function useHouseholdRealtime({
           }
         },
         onEvent: (event) => {
-          if (active) {
+          if (!active) {
+            return;
+          }
+
+          const decision = eventOrdering.evaluate(event);
+          if (decision.status === "accepted") {
             reportFailure(synchronizeGroceryRealtimeEvent(queryClient, event));
+          } else if (decision.status === "gap") {
+            reportFailure(
+              refreshShoppingSessionGroceryQueries(
+                queryClient,
+                event.household_id,
+                event.payload.shopping_session_id,
+              ),
+            );
           }
         },
         onReconnect: () => {
           if (active) {
+            eventOrdering.reset();
             reportFailure(refreshHouseholdGroceryQueries(queryClient, householdId));
           }
         },

@@ -19,10 +19,16 @@ const secondHouseholdId = "22222222-2222-4222-8222-222222222222";
 const sessionId = "33333333-3333-4333-8333-333333333333";
 const itemId = "44444444-4444-4444-8444-444444444444";
 
-function buildEvent(): RealtimeEvent {
+function buildEvent({
+  eventId = "55555555-5555-4555-8555-555555555555",
+  sequenceNumber = 1,
+}: {
+  eventId?: string;
+  sequenceNumber?: number;
+} = {}): RealtimeEvent {
   return {
     schema_version: 1,
-    event_id: "55555555-5555-4555-8555-555555555555",
+    event_id: eventId,
     event_type: "grocery.item_added",
     household_id: firstHouseholdId,
     occurred_at: "2026-07-30T12:00:00Z",
@@ -31,7 +37,7 @@ function buildEvent(): RealtimeEvent {
       grocery_item_id: itemId,
       actor_user_id: "66666666-6666-4666-8666-666666666666",
       item_name: "Milk",
-      sequence_number: 1,
+      sequence_number: sequenceNumber,
     },
   };
 }
@@ -159,6 +165,101 @@ describe("useHouseholdRealtime", () => {
       expect(queryClient.getQueryState(firstKey)?.isInvalidated).toBe(true);
     });
     expect(queryClient.getQueryState(secondKey)?.isInvalidated).toBe(false);
+    queryClient.clear();
+  });
+
+  it("ignores duplicate and stale events", () => {
+    const { queryClient, clients, clientFactory, wrapper } = buildHarness();
+    const invalidateQueries = jest.spyOn(queryClient, "invalidateQueries");
+    renderHook(
+      () =>
+        useHouseholdRealtime({
+          householdId: firstHouseholdId,
+          accessToken: "access-token",
+          clientFactory,
+        }),
+      { wrapper },
+    );
+    const latestEvent = buildEvent({ sequenceNumber: 5 });
+
+    act(() => clients[0].emit(latestEvent));
+    expect(invalidateQueries).toHaveBeenCalledTimes(2);
+
+    invalidateQueries.mockClear();
+    act(() => clients[0].emit(latestEvent));
+    act(() =>
+      clients[0].emit(
+        buildEvent({
+          eventId: "77777777-7777-4777-8777-777777777777",
+          sequenceNumber: 4,
+        }),
+      ),
+    );
+
+    expect(invalidateQueries).not.toHaveBeenCalled();
+    queryClient.clear();
+  });
+
+  it("refreshes the complete shopping session after a sequence gap", () => {
+    const { queryClient, clients, clientFactory, wrapper } = buildHarness();
+    const invalidateQueries = jest.spyOn(queryClient, "invalidateQueries");
+    renderHook(
+      () =>
+        useHouseholdRealtime({
+          householdId: firstHouseholdId,
+          accessToken: "access-token",
+          clientFactory,
+        }),
+      { wrapper },
+    );
+    act(() => clients[0].emit(buildEvent({ sequenceNumber: 2 })));
+    invalidateQueries.mockClear();
+
+    act(() =>
+      clients[0].emit(
+        buildEvent({
+          eventId: "77777777-7777-4777-8777-777777777777",
+          sequenceNumber: 5,
+        }),
+      ),
+    );
+
+    expect(invalidateQueries).toHaveBeenCalledTimes(1);
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: groceryQueryKeys.session(firstHouseholdId, sessionId),
+    });
+    queryClient.clear();
+  });
+
+  it("establishes a new ordering baseline after reconnection", () => {
+    const { queryClient, clients, clientFactory, wrapper } = buildHarness();
+    const invalidateQueries = jest.spyOn(queryClient, "invalidateQueries");
+    renderHook(
+      () =>
+        useHouseholdRealtime({
+          householdId: firstHouseholdId,
+          accessToken: "access-token",
+          clientFactory,
+        }),
+      { wrapper },
+    );
+    act(() => clients[0].emit(buildEvent({ sequenceNumber: 5 })));
+    invalidateQueries.mockClear();
+
+    act(() => clients[0].reportReconnect());
+    expect(invalidateQueries).toHaveBeenCalledTimes(1);
+    invalidateQueries.mockClear();
+
+    act(() =>
+      clients[0].emit(
+        buildEvent({
+          eventId: "77777777-7777-4777-8777-777777777777",
+          sequenceNumber: 4,
+        }),
+      ),
+    );
+
+    expect(invalidateQueries).toHaveBeenCalledTimes(2);
     queryClient.clear();
   });
 

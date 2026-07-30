@@ -48,3 +48,13 @@ export async function refreshHouseholdGroceryQueries(
     queryKey: groceryQueryKeys.household(householdId),
   });
 }
+
+export async function refreshShoppingSessionGroceryQueries(
+  queryClient: QueryClient,
+  householdId: string,
+  shoppingSessionId: string,
+): Promise<void> {
+  await queryClient.invalidateQueries({
+    queryKey: groceryQueryKeys.session(householdId, shoppingSessionId),
+  });
+}
