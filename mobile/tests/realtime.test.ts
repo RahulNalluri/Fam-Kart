@@ -73,6 +73,10 @@ function buildClient() {
 }
 
 describe("mobile household real-time client", () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it("builds ws and wss URLs from HTTP API URLs", () => {
     expect(buildHouseholdRealtimeUrl(householdId, "http://localhost:8000")).toBe(
       `ws://localhost:8000/api/v1/households/${householdId}/ws`,
@@ -165,21 +169,175 @@ describe("mobile household real-time client", () => {
     expect(onEvent).not.toHaveBeenCalled();
   });
 
-  it("reports a synchronous socket creation failure", () => {
+  it("retries a synchronous socket creation failure", () => {
+    jest.useFakeTimers();
+    const recoveredSocket = new FakeSocket();
     const onStateChange = jest.fn<void, [RealtimeConnectionState]>();
+    const socketFactory = jest
+      .fn<ReturnType<RealtimeSocketFactory>, Parameters<RealtimeSocketFactory>>()
+      .mockImplementationOnce(() => {
+        throw new Error("socket unavailable");
+      })
+      .mockReturnValueOnce(recoveredSocket);
     const client = new HouseholdRealtimeClient({
       householdId,
       accessToken: "access-token",
       onEvent: jest.fn(),
       onStateChange,
-      socketFactory: () => {
-        throw new Error("socket unavailable");
-      },
+      socketFactory,
     });
 
     client.connect();
 
-    expect(client.connectionState).toBe("error");
-    expect(onStateChange.mock.calls).toEqual([["connecting"], ["error"]]);
+    expect(client.connectionState).toBe("reconnecting");
+    expect(socketFactory).toHaveBeenCalledTimes(1);
+
+    jest.advanceTimersByTime(1_000);
+    recoveredSocket.onopen?.();
+
+    expect(socketFactory).toHaveBeenCalledTimes(2);
+    expect(client.connectionState).toBe("connected");
+    expect(onStateChange.mock.calls).toEqual([
+      ["connecting"],
+      ["error"],
+      ["reconnecting"],
+      ["connected"],
+    ]);
+    client.disconnect();
+  });
+
+  it("reconnects after a temporary closure and reports recovery", () => {
+    jest.useFakeTimers();
+    const firstSocket = new FakeSocket();
+    const secondSocket = new FakeSocket();
+    const socketFactory = jest
+      .fn<ReturnType<RealtimeSocketFactory>, Parameters<RealtimeSocketFactory>>()
+      .mockReturnValueOnce(firstSocket)
+      .mockReturnValueOnce(secondSocket);
+    const onReconnect = jest.fn();
+    const client = new HouseholdRealtimeClient({
+      householdId,
+      accessToken: "access-token",
+      onEvent: jest.fn(),
+      onReconnect,
+      socketFactory,
+      reconnectInitialDelayMs: 100,
+      reconnectMaxDelayMs: 400,
+    });
+    client.connect();
+    firstSocket.onopen?.();
+
+    firstSocket.onclose?.({ code: 1013, reason: "Try again later." });
+
+    expect(client.connectionState).toBe("reconnecting");
+    jest.advanceTimersByTime(99);
+    expect(socketFactory).toHaveBeenCalledTimes(1);
+
+    jest.advanceTimersByTime(1);
+    expect(socketFactory).toHaveBeenCalledTimes(2);
+    secondSocket.onopen?.();
+
+    expect(client.connectionState).toBe("connected");
+    expect(onReconnect).toHaveBeenCalledTimes(1);
+    client.disconnect();
+  });
+
+  it("caps exponential backoff and resets it after recovery", () => {
+    jest.useFakeTimers();
+    const sockets = [
+      new FakeSocket(),
+      new FakeSocket(),
+      new FakeSocket(),
+      new FakeSocket(),
+      new FakeSocket(),
+    ];
+    const socketFactory = jest
+      .fn<ReturnType<RealtimeSocketFactory>, Parameters<RealtimeSocketFactory>>()
+      .mockImplementation(() => sockets[socketFactory.mock.calls.length - 1]);
+    const client = new HouseholdRealtimeClient({
+      householdId,
+      accessToken: "access-token",
+      onEvent: jest.fn(),
+      socketFactory,
+      reconnectInitialDelayMs: 100,
+      reconnectMaxDelayMs: 250,
+    });
+    client.connect();
+    sockets[0].onopen?.();
+
+    sockets[0].onclose?.({ code: 1006, reason: "Network lost." });
+    jest.advanceTimersByTime(100);
+    sockets[1].onclose?.({ code: 1006, reason: "Network lost." });
+    jest.advanceTimersByTime(200);
+    sockets[2].onclose?.({ code: 1006, reason: "Network lost." });
+    jest.advanceTimersByTime(249);
+    expect(socketFactory).toHaveBeenCalledTimes(3);
+    jest.advanceTimersByTime(1);
+    expect(socketFactory).toHaveBeenCalledTimes(4);
+
+    sockets[3].onopen?.();
+    sockets[3].onclose?.({ code: 1006, reason: "Network lost again." });
+    jest.advanceTimersByTime(99);
+    expect(socketFactory).toHaveBeenCalledTimes(4);
+    jest.advanceTimersByTime(1);
+    expect(socketFactory).toHaveBeenCalledTimes(5);
+    client.disconnect();
+  });
+
+  it.each([1000, 4401, 4404])(
+    "does not reconnect after terminal close code %s",
+    (code) => {
+      jest.useFakeTimers();
+      const { client, socket, socketFactory } = buildClient();
+      client.connect();
+      socket.onopen?.();
+
+      socket.onclose?.({ code, reason: "Connection closed." });
+      jest.runAllTimers();
+
+      expect(client.connectionState).toBe("disconnected");
+      expect(socketFactory).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("cancels pending reconnection after a manual disconnect", () => {
+    jest.useFakeTimers();
+    const { client, socket, socketFactory } = buildClient();
+    client.connect();
+    socket.onopen?.();
+    socket.onclose?.({ code: 1006, reason: "Network lost." });
+
+    client.disconnect();
+    jest.runAllTimers();
+
+    expect(client.connectionState).toBe("disconnected");
+    expect(socketFactory).toHaveBeenCalledTimes(1);
+  });
+
+  it("treats a connection after manual disconnect as a fresh session", () => {
+    const firstSocket = new FakeSocket();
+    const secondSocket = new FakeSocket();
+    const socketFactory = jest
+      .fn<ReturnType<RealtimeSocketFactory>, Parameters<RealtimeSocketFactory>>()
+      .mockReturnValueOnce(firstSocket)
+      .mockReturnValueOnce(secondSocket);
+    const onReconnect = jest.fn();
+    const client = new HouseholdRealtimeClient({
+      householdId,
+      accessToken: "access-token",
+      onEvent: jest.fn(),
+      onReconnect,
+      socketFactory,
+    });
+
+    client.connect();
+    firstSocket.onopen?.();
+    client.disconnect();
+    client.connect();
+    secondSocket.onopen?.();
+
+    expect(client.connectionState).toBe("connected");
+    expect(onReconnect).not.toHaveBeenCalled();
+    client.disconnect();
   });
 });

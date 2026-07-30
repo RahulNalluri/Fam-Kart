@@ -215,8 +215,14 @@ The mobile foundation now includes a household WebSocket client. It derives
 `ws://` or `wss://` endpoints from `EXPO_PUBLIC_API_URL`, authenticates through the
 `Authorization` header, validates the versioned grocery event contract with Zod,
 reports connection and close states, rejects malformed or cross-household events,
-and detaches all handlers during local disconnect. Authentication storage,
-automatic reconnection, and React Query invalidation remain separate modules.
+and detaches all handlers during local disconnect. Authentication storage remains
+a separate module.
+
+Temporary mobile WebSocket closures now reconnect automatically with exponential
+backoff from one second up to 30 seconds. A successful recovery resets the delay
+and emits a reconnect callback for later data recovery. Normal local/server closure
+and backend close codes `4401` and `4404` do not retry, while manual disconnect
+cancels any pending timer and prevents stale sockets from reconnecting.
 
 TanStack React Query is now provided at the Expo application root. Stable grocery
 query keys isolate cached data by household and shopping session. Validated
