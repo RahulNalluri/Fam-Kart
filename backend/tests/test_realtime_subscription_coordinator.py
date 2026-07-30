@@ -1,5 +1,5 @@
 import asyncio
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock, call, patch
 from uuid import UUID, uuid4
 
 import pytest
@@ -42,6 +42,32 @@ class SubscriberHarness:
             await asyncio.Event().wait()
         finally:
             self.stopped.append(household_id)
+
+
+class RecoveringSubscriberHarness:
+    def __init__(self, *, failures_before_recovery: int) -> None:
+        self.failures_before_recovery = failures_before_recovery
+        self.attempts = 0
+        self.recovered = asyncio.Event()
+
+    async def __call__(
+        self,
+        redis_client: Redis,
+        household_id: UUID,
+        connection_manager: RealtimeConnectionManager,
+        config: Settings,
+        ready_event: asyncio.Event | None,
+    ) -> None:
+        assert ready_event is not None
+        self.attempts += 1
+        if self.attempts == 1:
+            ready_event.set()
+        if self.attempts <= self.failures_before_recovery:
+            raise RealtimeEventSubscribeError("redis unavailable")
+
+        ready_event.set()
+        self.recovered.set()
+        await asyncio.Event().wait()
 
 
 def test_concurrent_connections_share_one_household_subscription() -> None:
@@ -163,3 +189,76 @@ def test_initial_subscriber_failure_is_reported_and_reference_is_removed() -> No
         assert await coordinator.reference_count(household_id) == 0
 
     asyncio.run(scenario())
+
+
+def test_active_subscription_recovers_with_bounded_exponential_backoff() -> None:
+    async def scenario(
+        logger: Mock,
+    ) -> tuple[RecoveringSubscriberHarness, AsyncMock, UUID]:
+        subscriber = RecoveringSubscriberHarness(failures_before_recovery=3)
+        recovery_sleep = AsyncMock()
+        household_id = uuid4()
+        config = Settings(
+            realtime_reconnect_initial_delay_seconds=0.5,
+            realtime_reconnect_max_delay_seconds=0.75,
+        )
+        coordinator = RealtimeSubscriptionCoordinator(
+            build_redis_client(),
+            build_connection_manager(),
+            config,
+            subscriber,
+            recovery_sleep,
+        )
+
+        await coordinator.acquire(household_id)
+        await subscriber.recovered.wait()
+        for _ in range(10):
+            if logger.info.called:
+                break
+            await asyncio.sleep(0)
+
+        assert await coordinator.subscription_count() == 1
+        assert await coordinator.reference_count(household_id) == 1
+        await coordinator.shutdown()
+        return subscriber, recovery_sleep, household_id
+
+    with patch("app.services.realtime_subscription_coordinator.logger") as logger:
+        subscriber, recovery_sleep, household_id = asyncio.run(scenario(logger))
+
+    assert subscriber.attempts == 4
+    assert recovery_sleep.await_args_list == [call(0.5), call(0.75), call(0.75)]
+    assert logger.warning.call_count == 3
+    logger.info.assert_called_once_with(
+        "realtime_subscription_recovered",
+        household_id=str(household_id),
+        recovery_attempts=3,
+    )
+
+
+def test_final_disconnect_cancels_pending_subscription_recovery() -> None:
+    async def scenario() -> tuple[RecoveringSubscriberHarness, int]:
+        subscriber = RecoveringSubscriberHarness(failures_before_recovery=1)
+        sleep_started = asyncio.Event()
+
+        async def blocking_recovery_sleep(delay: float) -> None:
+            sleep_started.set()
+            await asyncio.Event().wait()
+
+        household_id = uuid4()
+        coordinator = RealtimeSubscriptionCoordinator(
+            build_redis_client(),
+            build_connection_manager(),
+            subscriber=subscriber,
+            recovery_sleep=blocking_recovery_sleep,
+        )
+
+        await coordinator.acquire(household_id)
+        await sleep_started.wait()
+        await coordinator.release(household_id)
+
+        return subscriber, await coordinator.subscription_count()
+
+    subscriber, subscription_count = asyncio.run(scenario())
+
+    assert subscriber.attempts == 1
+    assert subscription_count == 0

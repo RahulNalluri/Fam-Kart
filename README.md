@@ -196,6 +196,21 @@ disconnect cancels the task, and application shutdown stops every subscriber
 before closing Redis. Separate backend processes subscribe independently, allowing
 one published household event to reach WebSockets connected to any backend.
 
+After a subscription has connected successfully, temporary Redis failures trigger
+automatic household resubscription with bounded exponential backoff. Recovery
+starts at `REALTIME_RECONNECT_INITIAL_DELAY_SECONDS` and is capped by
+`REALTIME_RECONNECT_MAX_DELAY_SECONDS`. Failures and successful recovery are logged
+with household and attempt information. An initial Redis failure still rejects the
+new WebSocket as temporarily unavailable, while final disconnect and application
+shutdown cancel pending recovery immediately.
+
+The complete backend real-time workflow is covered by an opt-in Redis integration
+test. It connects two authenticated household members through the real WebSocket
+route, adds a grocery item through the real HTTP API, and verifies that the
+committed activity is published through Redis and received as the same validated
+event by both connections. The event identity is also matched to the activity row
+stored in the database.
+
 ## Quick Start
 
 PowerShell:

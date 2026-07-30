@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import Callable, Coroutine
+from collections.abc import Awaitable, Callable, Coroutine
 from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any
@@ -8,13 +8,18 @@ from uuid import UUID
 from redis.asyncio import Redis
 
 from app.core.config import Settings, settings
+from app.core.logging import logger
 from app.services.realtime_connections import RealtimeConnectionManager
-from app.services.realtime_subscriber import subscribe_to_household_events
+from app.services.realtime_subscriber import (
+    RealtimeEventSubscribeError,
+    subscribe_to_household_events,
+)
 
 RealtimeSubscriber = Callable[
     [Redis, UUID, RealtimeConnectionManager, Settings, asyncio.Event | None],
     Coroutine[Any, Any, None],
 ]
+RecoverySleep = Callable[[float], Awaitable[None]]
 
 
 class RealtimeSubscriptionStartError(RuntimeError):
@@ -35,11 +40,13 @@ class RealtimeSubscriptionCoordinator:
         connection_manager: RealtimeConnectionManager,
         config: Settings = settings,
         subscriber: RealtimeSubscriber = subscribe_to_household_events,
+        recovery_sleep: RecoverySleep = asyncio.sleep,
     ) -> None:
         self._redis_client = redis_client
         self._connection_manager = connection_manager
         self._config = config
         self._subscriber = subscriber
+        self._recovery_sleep = recovery_sleep
         self._subscriptions: dict[UUID, HouseholdSubscription] = {}
         self._lock = asyncio.Lock()
 
@@ -109,11 +116,8 @@ class RealtimeSubscriptionCoordinator:
     ) -> HouseholdSubscription:
         ready_event = asyncio.Event()
         task: asyncio.Task[None] = asyncio.create_task(
-            self._subscriber(
-                self._redis_client,
+            self._maintain_subscription(
                 household_id,
-                self._connection_manager,
-                self._config,
                 ready_event,
             ),
         )
@@ -123,6 +127,93 @@ class RealtimeSubscriptionCoordinator:
             ready_event=ready_event,
             reference_count=reference_count,
         )
+
+    async def _maintain_subscription(
+        self,
+        household_id: UUID,
+        ready_event: asyncio.Event,
+    ) -> None:
+        recovery_attempts = 0
+        while True:
+            try:
+                await self._run_subscription_attempt(
+                    household_id,
+                    ready_event,
+                    recovery_attempts,
+                )
+            except RealtimeEventSubscribeError as error:
+                if not ready_event.is_set():
+                    raise
+
+                recovery_attempts += 1
+                delay = min(
+                    self._config.realtime_reconnect_initial_delay_seconds
+                    * (2 ** min(recovery_attempts - 1, 30)),
+                    self._config.realtime_reconnect_max_delay_seconds,
+                )
+                cause = error.__cause__
+                logger.warning(
+                    "realtime_subscription_recovery_scheduled",
+                    household_id=str(household_id),
+                    recovery_attempt=recovery_attempts,
+                    retry_delay_seconds=delay,
+                    error_type=(
+                        type(cause).__name__
+                        if cause is not None
+                        else type(error).__name__
+                    ),
+                )
+                await self._recovery_sleep(delay)
+
+    async def _run_subscription_attempt(
+        self,
+        household_id: UUID,
+        ready_event: asyncio.Event,
+        recovery_attempts: int,
+    ) -> None:
+        attempt_ready = asyncio.Event()
+        subscriber_task = asyncio.create_task(
+            self._subscriber(
+                self._redis_client,
+                household_id,
+                self._connection_manager,
+                self._config,
+                attempt_ready,
+            ),
+        )
+        ready_waiter = asyncio.create_task(attempt_ready.wait())
+        try:
+            done, _ = await asyncio.wait(
+                (ready_waiter, subscriber_task),
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if attempt_ready.is_set():
+                if ready_event.is_set():
+                    logger.info(
+                        "realtime_subscription_recovered",
+                        household_id=str(household_id),
+                        recovery_attempts=recovery_attempts,
+                    )
+                else:
+                    ready_event.set()
+
+                await subscriber_task
+                raise RealtimeEventSubscribeError(
+                    "Real-time subscription stopped unexpectedly.",
+                )
+
+            if subscriber_task in done:
+                await subscriber_task
+                raise RealtimeEventSubscribeError(
+                    "Real-time subscription stopped before becoming ready.",
+                )
+        finally:
+            ready_waiter.cancel()
+            with suppress(asyncio.CancelledError):
+                await ready_waiter
+            if not subscriber_task.done():
+                subscriber_task.cancel()
+                await asyncio.gather(subscriber_task, return_exceptions=True)
 
     async def _wait_until_ready(
         self,

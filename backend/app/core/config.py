@@ -29,6 +29,16 @@ class Settings(BaseSettings):
         default="familykart",
         pattern=r"^[a-z][a-z0-9-]{0,31}$",
     )
+    realtime_reconnect_initial_delay_seconds: float = Field(
+        default=0.5,
+        gt=0,
+        le=60,
+    )
+    realtime_reconnect_max_delay_seconds: float = Field(
+        default=30,
+        gt=0,
+        le=300,
+    )
 
     jwt_secret_key: SecretStr = Field(min_length=32)
     jwt_algorithm: JwtAlgorithm = "HS256"
