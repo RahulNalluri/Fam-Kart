@@ -133,6 +133,11 @@ The future WebSocket and Redis layers will exchange messages shaped like this:
 }
 ```
 
+Committed grocery activity records are converted into this contract by the
+real-time event builder. It explicitly maps all five grocery mutations, reuses the
+activity record ID for stable event identity, preserves database ordering and
+timestamps, and performs no database writes or Redis publishing.
+
 Messages contain identifiers and ordering information rather than a second copy of
 the grocery record. Mobile clients will refresh authoritative API data after
 receiving an event.
@@ -148,13 +153,12 @@ events yet.
 An in-memory connection manager now tracks authenticated sockets by household and
 user, supports multiple devices, broadcasts validated event JSON only within the
 target household, and removes disconnected or failed sockets. This local registry
-is process-specific; Redis Pub/Sub is still required to coordinate multiple backend
-containers.
+is process-specific; Redis Pub/Sub coordinates events across backend containers.
 
 The backend now owns one asynchronous Redis client per application process. Its
 connection URL is validated from `REDIS_URL`, Docker routes it to the Redis service,
 and FastAPI closes its connection pool during shutdown. Redis availability can be
-checked through `GET /api/v1/health/redis`. Pub/Sub messaging is not implemented yet.
+checked through `GET /api/v1/health/redis`.
 
 Household real-time messages use deterministic, environment-isolated Redis channel
 names such as
@@ -197,6 +201,15 @@ source .venv/bin/activate
 cd backend
 pip install -e ".[dev]"
 pytest
+```
+
+Redis integration tests require the Docker Redis service and are excluded from the
+normal unit-test run. The commands are the same in PowerShell and Unix shells:
+
+```text
+docker compose up -d redis
+cd backend
+pytest -m redis_integration
 ```
 
 Docker:
