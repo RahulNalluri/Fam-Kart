@@ -231,6 +231,13 @@ feed; edit, complete, and reopen events also invalidate the affected item detail
 while delete events remove stale item details. Active queries can therefore refetch
 authoritative API data without changing unrelated household or session caches.
 
+The `useHouseholdRealtime` hook now owns the mobile real-time lifecycle. It creates
+one authenticated client when a household and access token are available, forwards
+events to targeted React Query synchronization, refreshes all cached grocery data
+for that household after reconnection, replaces the connection when credentials or
+household change, and disconnects on unmount. Late callbacks from an obsolete
+client are ignored.
+
 ## Quick Start
 
 PowerShell:

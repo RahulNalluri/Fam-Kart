@@ -39,3 +39,12 @@ export async function synchronizeGroceryRealtimeEvent(
 
   await Promise.all(invalidations);
 }
+
+export async function refreshHouseholdGroceryQueries(
+  queryClient: QueryClient,
+  householdId: string,
+): Promise<void> {
+  await queryClient.invalidateQueries({
+    queryKey: groceryQueryKeys.household(householdId),
+  });
+}
