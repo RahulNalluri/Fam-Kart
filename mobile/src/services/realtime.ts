@@ -11,6 +11,19 @@ export type RealtimeCloseDetails = {
   reason: string;
 };
 
+export type RealtimeCloseKind =
+  | "normal"
+  | "authentication_required"
+  | "household_unavailable"
+  | "service_unavailable"
+  | "connection_interrupted";
+
+export type RealtimeCloseOutcome = RealtimeCloseDetails & {
+  kind: RealtimeCloseKind;
+  message: string;
+  retryable: boolean;
+};
+
 type RealtimeMessage = {
   data: unknown;
 };
@@ -45,6 +58,7 @@ export type HouseholdRealtimeClientOptions = {
   onStateChange?: (state: RealtimeConnectionState) => void;
   onInvalidMessage?: (data: unknown) => void;
   onClose?: (details: RealtimeCloseDetails) => void;
+  onCloseOutcome?: (outcome: RealtimeCloseOutcome) => void;
   onReconnect?: () => void;
   apiUrl?: string;
   socketFactory?: RealtimeSocketFactory;
@@ -53,7 +67,6 @@ export type HouseholdRealtimeClientOptions = {
 };
 
 const householdIdSchema = z.uuid();
-const NON_RETRYABLE_CLOSE_CODES = new Set([1000, 4401, 4404]);
 const DEFAULT_RECONNECT_INITIAL_DELAY_MS = 1_000;
 const DEFAULT_RECONNECT_MAX_DELAY_MS = 30_000;
 
@@ -88,6 +101,48 @@ export function parseRealtimeEvent(data: unknown): RealtimeEvent | null {
   }
 }
 
+export function classifyRealtimeClose(
+  details: RealtimeCloseDetails,
+): RealtimeCloseOutcome {
+  switch (details.code) {
+    case 1000:
+      return {
+        ...details,
+        kind: "normal",
+        message: "Real-time updates stopped normally.",
+        retryable: false,
+      };
+    case 4401:
+      return {
+        ...details,
+        kind: "authentication_required",
+        message: "Your session has expired. Please sign in again.",
+        retryable: false,
+      };
+    case 4404:
+      return {
+        ...details,
+        kind: "household_unavailable",
+        message: "This household is no longer available to your account.",
+        retryable: false,
+      };
+    case 1013:
+      return {
+        ...details,
+        kind: "service_unavailable",
+        message: "Real-time updates are temporarily unavailable. Reconnecting.",
+        retryable: true,
+      };
+    default:
+      return {
+        ...details,
+        kind: "connection_interrupted",
+        message: "The real-time connection was interrupted. Reconnecting.",
+        retryable: true,
+      };
+  }
+}
+
 function createNativeSocket(
   url: string,
   options: RealtimeSocketOptions,
@@ -103,6 +158,7 @@ export class HouseholdRealtimeClient {
   private readonly onStateChange?: (state: RealtimeConnectionState) => void;
   private readonly onInvalidMessage?: (data: unknown) => void;
   private readonly onClose?: (details: RealtimeCloseDetails) => void;
+  private readonly onCloseOutcome?: (outcome: RealtimeCloseOutcome) => void;
   private readonly onReconnect?: () => void;
   private readonly url: string;
   private readonly socketFactory: RealtimeSocketFactory;
@@ -126,6 +182,7 @@ export class HouseholdRealtimeClient {
     this.onStateChange = options.onStateChange;
     this.onInvalidMessage = options.onInvalidMessage;
     this.onClose = options.onClose;
+    this.onCloseOutcome = options.onCloseOutcome;
     this.onReconnect = options.onReconnect;
     this.url = buildHouseholdRealtimeUrl(
       this.householdId,
@@ -230,8 +287,10 @@ export class HouseholdRealtimeClient {
         return;
       }
       this.socket = null;
+      const outcome = classifyRealtimeClose(details);
       this.onClose?.(details);
-      if (this.reconnectEnabled && !NON_RETRYABLE_CLOSE_CODES.has(details.code)) {
+      this.onCloseOutcome?.(outcome);
+      if (this.reconnectEnabled && outcome.retryable) {
         this.scheduleReconnect();
       } else {
         this.reconnectEnabled = false;

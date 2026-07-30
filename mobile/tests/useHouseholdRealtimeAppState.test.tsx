@@ -54,6 +54,16 @@ class FakeRealtimeClient implements HouseholdRealtimeConnection {
   emit(event: RealtimeEvent): void {
     this.options.onEvent(event);
   }
+
+  reportServiceUnavailable(): void {
+    this.options.onCloseOutcome?.({
+      code: 1013,
+      reason: "Real-time service unavailable.",
+      kind: "service_unavailable",
+      message: "Real-time updates are temporarily unavailable. Reconnecting.",
+      retryable: true,
+    });
+  }
 }
 
 function buildEvent(): RealtimeEvent {
@@ -154,6 +164,29 @@ describe("useHouseholdRealtime AppState lifecycle", () => {
     act(() => harness.clients[0].emit(buildEvent()));
 
     expect(harness.queryClient.getQueryState(itemsKey)?.isInvalidated).toBe(false);
+    unmount();
+    harness.queryClient.clear();
+  });
+
+  it("does not report stale close outcomes while backgrounded", () => {
+    const harness = buildHarness("active");
+    const onCloseOutcome = jest.fn();
+    const { unmount } = renderHook(
+      () =>
+        useHouseholdRealtime({
+          householdId,
+          accessToken: "access-token",
+          appState: harness.appState,
+          clientFactory: harness.clientFactory,
+          onCloseOutcome,
+        }),
+      { wrapper: harness.wrapper },
+    );
+
+    act(() => harness.appState.transitionTo("background"));
+    act(() => harness.clients[0].reportServiceUnavailable());
+
+    expect(onCloseOutcome).not.toHaveBeenCalled();
     unmount();
     harness.queryClient.clear();
   });

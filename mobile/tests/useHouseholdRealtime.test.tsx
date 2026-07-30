@@ -60,6 +60,16 @@ class FakeRealtimeClient implements HouseholdRealtimeConnection {
   reportReconnect(): void {
     this.options.onReconnect?.();
   }
+
+  reportAuthenticationClose(): void {
+    this.options.onCloseOutcome?.({
+      code: 4401,
+      reason: "Authentication required.",
+      kind: "authentication_required",
+      message: "Your session has expired. Please sign in again.",
+      retryable: false,
+    });
+  }
 }
 
 function buildHarness() {
@@ -121,6 +131,31 @@ describe("useHouseholdRealtime", () => {
     act(() => clients[0].reportState("connected"));
 
     expect(result.current).toBe("connected");
+  });
+
+  it("forwards an understandable terminal close outcome", () => {
+    const { clients, clientFactory, wrapper } = buildHarness();
+    const onCloseOutcome = jest.fn();
+    renderHook(
+      () =>
+        useHouseholdRealtime({
+          householdId: firstHouseholdId,
+          accessToken: "access-token",
+          clientFactory,
+          onCloseOutcome,
+        }),
+      { wrapper },
+    );
+
+    act(() => clients[0].reportAuthenticationClose());
+
+    expect(onCloseOutcome).toHaveBeenCalledWith({
+      code: 4401,
+      reason: "Authentication required.",
+      kind: "authentication_required",
+      message: "Your session has expired. Please sign in again.",
+      retryable: false,
+    });
   });
 
   it("synchronizes incoming events with the affected grocery queries", async () => {

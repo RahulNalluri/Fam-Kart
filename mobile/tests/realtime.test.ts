@@ -5,6 +5,7 @@ import {
   RealtimeSocket,
   RealtimeSocketFactory,
   buildHouseholdRealtimeUrl,
+  classifyRealtimeClose,
   parseRealtimeEvent,
 } from "../src/services/realtime";
 
@@ -84,6 +85,67 @@ describe("mobile household real-time client", () => {
     expect(
       buildHouseholdRealtimeUrl(householdId, "https://api.familykart.example"),
     ).toBe(`wss://api.familykart.example/api/v1/households/${householdId}/ws`);
+  });
+
+  it.each([
+    [1000, "normal", false, "Real-time updates stopped normally."],
+    [
+      4401,
+      "authentication_required",
+      false,
+      "Your session has expired. Please sign in again.",
+    ],
+    [
+      4404,
+      "household_unavailable",
+      false,
+      "This household is no longer available to your account.",
+    ],
+    [
+      1013,
+      "service_unavailable",
+      true,
+      "Real-time updates are temporarily unavailable. Reconnecting.",
+    ],
+    [
+      1006,
+      "connection_interrupted",
+      true,
+      "The real-time connection was interrupted. Reconnecting.",
+    ],
+  ])("classifies close code %s as %s", (code, kind, retryable, message) => {
+    expect(
+      classifyRealtimeClose({ code: code as number, reason: "Server reason." }),
+    ).toEqual({
+      code,
+      reason: "Server reason.",
+      kind,
+      message,
+      retryable,
+    });
+  });
+
+  it("reports a semantic close outcome alongside the server details", () => {
+    const socket = new FakeSocket();
+    const onCloseOutcome = jest.fn();
+    const client = new HouseholdRealtimeClient({
+      householdId,
+      accessToken: "access-token",
+      onEvent: jest.fn(),
+      onCloseOutcome,
+      socketFactory: () => socket,
+    });
+    client.connect();
+
+    socket.onclose?.({ code: 4401, reason: "Authentication required." });
+
+    expect(onCloseOutcome).toHaveBeenCalledWith({
+      code: 4401,
+      reason: "Authentication required.",
+      kind: "authentication_required",
+      message: "Your session has expired. Please sign in again.",
+      retryable: false,
+    });
   });
 
   it("connects with the access token in the Authorization header", () => {

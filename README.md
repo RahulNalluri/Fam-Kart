@@ -258,6 +258,12 @@ with a household cache refresh when the app returns to the foreground. Repeated
 state notifications cannot create duplicate sockets, and unmount removes both the
 AppState listener and WebSocket connection.
 
+Mobile real-time closures are now converted into typed, understandable outcomes.
+An expired session (`4401`) asks the user to sign in again, unavailable household
+access (`4404`) stops without retrying, and temporary service (`1013`) or network
+interruptions report recovery messages while automatic reconnection continues.
+Normal client closure remains silent at the lifecycle-hook boundary.
+
 ## Quick Start
 
 PowerShell:

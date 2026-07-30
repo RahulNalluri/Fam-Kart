@@ -10,6 +10,7 @@ import {
 import {
   HouseholdRealtimeClient,
   HouseholdRealtimeClientOptions,
+  RealtimeCloseOutcome,
   RealtimeConnectionState,
 } from "../services/realtime";
 import { RealtimeEventOrderingTracker } from "../services/realtimeEventOrdering";
@@ -35,6 +36,7 @@ export type UseHouseholdRealtimeOptions = {
   householdId: string | null;
   accessToken: string | null;
   onError?: (error: unknown) => void;
+  onCloseOutcome?: (outcome: RealtimeCloseOutcome) => void;
   clientFactory?: HouseholdRealtimeClientFactory;
   appState?: RealtimeAppState;
 };
@@ -47,14 +49,17 @@ export function useHouseholdRealtime({
   householdId,
   accessToken,
   onError,
+  onCloseOutcome,
   clientFactory = createHouseholdRealtimeClient,
   appState = mobileAppState,
 }: UseHouseholdRealtimeOptions): RealtimeConnectionState {
   const queryClient = useQueryClient();
   const errorHandlerRef = useRef(onError);
+  const closeOutcomeHandlerRef = useRef(onCloseOutcome);
   const [connectionState, setConnectionState] =
     useState<RealtimeConnectionState>("disconnected");
   errorHandlerRef.current = onError;
+  closeOutcomeHandlerRef.current = onCloseOutcome;
 
   useEffect(() => {
     if (!householdId || !accessToken?.trim()) {
@@ -105,6 +110,11 @@ export function useHouseholdRealtime({
           if (active && appIsActive) {
             eventOrdering.reset();
             reportFailure(refreshHouseholdGroceryQueries(queryClient, householdId));
+          }
+        },
+        onCloseOutcome: (outcome) => {
+          if (active && appIsActive && outcome.kind !== "normal") {
+            closeOutcomeHandlerRef.current?.(outcome);
           }
         },
       });
