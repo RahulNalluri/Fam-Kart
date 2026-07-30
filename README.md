@@ -143,6 +143,16 @@ their exact committed activity event for Redis publication. Idempotent requests 
 not publish duplicate events, and Redis delivery failures are logged without
 rolling back or hiding the grocery change already committed to PostgreSQL.
 
+Real-time publication follows a best-effort failure policy. PostgreSQL and its
+grocery activity records are the source of truth, so Redis publication runs only
+after the database commit. A Redis connection failure is recorded as a structured
+warning containing the event, household, event type, policy, and safe error type;
+it never changes a successful grocery API response or removes committed data.
+Publishing to zero active subscribers is also a success because it is a valid
+Pub/Sub state. The API process does not retry publication: in-process retries can
+delay requests and cannot make ephemeral Pub/Sub delivery durable. Clients refresh
+authoritative grocery data through the API when they connect or reconnect.
+
 Messages contain identifiers and ordering information rather than a second copy of
 the grocery record. Mobile clients will refresh authoritative API data after
 receiving an event.
@@ -151,9 +161,7 @@ Authenticated household members can open
 `WS /api/v1/households/{household_id}/ws` with their access token in the
 `Authorization: Bearer <token>` header. Tokens are intentionally rejected in query
 strings. Invalid authentication closes with code `4401`; unknown, inaccessible, or
-previously left households close with privacy-preserving code `4404`. The current
-endpoint keeps authorized connections open, but grocery mutations do not publish
-events yet.
+previously left households close with privacy-preserving code `4404`.
 
 An in-memory connection manager now tracks authenticated sockets by household and
 user, supports multiple devices, broadcasts validated event JSON only within the
@@ -172,8 +180,8 @@ environment always resolve to the same channel, while different households or
 environments cannot share a channel. Publishing and subscribing are separate
 modules. The event publisher now serializes validated event envelopes, sends them
 to the correct household channel, reports the number of active Redis subscribers,
-and translates Redis connection failures into a service-level error. Grocery
-mutations do not call the publisher yet.
+and translates Redis connection failures into a service-level error. Committed
+grocery mutations use the best-effort wrapper around this strict publisher.
 
 The Redis event subscriber listens to one household channel, validates each event
 envelope and its household ownership, and forwards accepted events to the local

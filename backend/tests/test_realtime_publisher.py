@@ -1,7 +1,7 @@
 import asyncio
 import json
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 from uuid import uuid4
 
 import pytest
@@ -97,12 +97,32 @@ def test_best_effort_publisher_reports_success() -> None:
     assert published is True
 
 
-def test_best_effort_publisher_swallows_redis_failure() -> None:
-    redis_client = build_redis_client()
-    redis_client.publish.side_effect = RedisConnectionError("connection failed")
+def test_best_effort_publisher_treats_zero_subscribers_as_success() -> None:
+    redis_client = build_redis_client(subscriber_count=0)
 
     published = asyncio.run(
         try_publish_realtime_event(redis_client, build_event()),
     )
 
+    assert published is True
+
+
+def test_best_effort_publisher_swallows_redis_failure() -> None:
+    redis_client = build_redis_client()
+    redis_client.publish.side_effect = RedisConnectionError("connection failed")
+    event = build_event()
+
+    with patch("app.services.realtime_publisher.logger") as logger:
+        published = asyncio.run(
+            try_publish_realtime_event(redis_client, event),
+        )
+
     assert published is False
+    logger.warning.assert_called_once_with(
+        "realtime_event_publish_failed",
+        event_id=str(event.event_id),
+        household_id=str(event.household_id),
+        event_type=event.event_type.value,
+        failure_policy="best_effort",
+        error_type="ConnectionError",
+    )

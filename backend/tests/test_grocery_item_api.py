@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 import pytest
 from fastapi.testclient import TestClient
 from redis.asyncio import Redis
+from redis.exceptions import ConnectionError as RedisConnectionError
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -1475,6 +1476,41 @@ def test_grocery_mutations_create_ordered_activity_without_idempotent_duplicates
         json.loads(call.args[1])["household_id"] == str(household.id)
         for call in redis_client.publish.await_args_list
     )
+
+
+def test_committed_grocery_mutation_succeeds_when_realtime_publish_fails(
+    client: TestClient,
+    db_session: Session,
+    redis_client: Redis,
+) -> None:
+    owner = create_user(db_session, email="publish-failure-owner@example.com")
+    household = create_household(db_session, name="Publish Failure Household")
+    add_membership(
+        db_session,
+        household=household,
+        user=owner,
+        role=HouseholdRole.OWNER,
+    )
+    shopping_session = create_shopping_session(
+        db_session,
+        household=household,
+        creator=owner,
+    )
+    redis_client.publish.side_effect = RedisConnectionError("redis unavailable")
+
+    response = client.post(
+        collection_url(household.id, shopping_session.id),
+        headers=authorization_header(owner),
+        json={"name": "Milk"},
+    )
+
+    assert response.status_code == 201
+    item_id = UUID(response.json()["id"])
+    assert db_session.get(GroceryItem, item_id) is not None
+    activity_event = db_session.query(GroceryActivityEvent).one()
+    assert activity_event.grocery_item_id == item_id
+    assert activity_event.event_type.value == "item_added"
+    redis_client.publish.assert_awaited_once()
 
 
 def test_activity_list_honors_limit(

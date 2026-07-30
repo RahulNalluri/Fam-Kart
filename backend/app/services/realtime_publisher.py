@@ -32,12 +32,17 @@ async def try_publish_realtime_event(
 ) -> bool:
     try:
         await publish_realtime_event(redis_client, event, config)
-    except RealtimeEventPublishError:
+    except RealtimeEventPublishError as error:
+        cause = error.__cause__
         logger.warning(
             "realtime_event_publish_failed",
             event_id=str(event.event_id),
             household_id=str(event.household_id),
             event_type=event.event_type.value,
+            failure_policy="best_effort",
+            error_type=(
+                type(cause).__name__ if cause is not None else type(error).__name__
+            ),
         )
         return False
     return True
