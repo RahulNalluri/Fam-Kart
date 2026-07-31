@@ -13,11 +13,14 @@ from app.schemas.realtime import (
     GroceryItemRealtimePayload,
     RealtimeEventEnvelope,
     RealtimeEventType,
+    RealtimeMembershipRevokedEnvelope,
 )
 from app.services.realtime_publisher import (
     RealtimeEventPublishError,
     publish_realtime_event,
+    publish_realtime_membership_revoked,
     try_publish_realtime_event,
+    try_publish_realtime_membership_revoked,
 )
 
 
@@ -123,6 +126,46 @@ def test_best_effort_publisher_swallows_redis_failure() -> None:
         event_id=str(event.event_id),
         household_id=str(event.household_id),
         event_type=event.event_type.value,
+        failure_policy="best_effort",
+        error_type="ConnectionError",
+    )
+
+
+def test_membership_revocation_uses_the_household_channel() -> None:
+    redis_client = build_redis_client(subscriber_count=2)
+    message = RealtimeMembershipRevokedEnvelope(
+        household_id=uuid4(),
+        user_id=uuid4(),
+    )
+
+    subscriber_count = asyncio.run(
+        publish_realtime_membership_revoked(redis_client, message),
+    )
+
+    assert subscriber_count == 2
+    channel, encoded_message = redis_client.publish.await_args.args
+    assert str(message.household_id) in channel
+    assert json.loads(encoded_message) == json.loads(message.model_dump_json())
+
+
+def test_membership_revocation_publish_failure_is_best_effort() -> None:
+    redis_client = build_redis_client()
+    redis_client.publish.side_effect = RedisConnectionError("connection failed")
+    message = RealtimeMembershipRevokedEnvelope(
+        household_id=uuid4(),
+        user_id=uuid4(),
+    )
+
+    with patch("app.services.realtime_publisher.logger") as logger:
+        published = asyncio.run(
+            try_publish_realtime_membership_revoked(redis_client, message),
+        )
+
+    assert published is False
+    logger.warning.assert_called_once_with(
+        "realtime_membership_revocation_publish_failed",
+        household_id=str(message.household_id),
+        user_id=str(message.user_id),
         failure_policy="best_effort",
         error_type="ConnectionError",
     )

@@ -1,10 +1,12 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
+from redis.asyncio import Redis
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user
+from app.core.redis import get_redis
 from app.db.session import get_db
 from app.models.user import User
 from app.repositories.household_invitations import HouseholdInvitationRepository
@@ -44,6 +46,8 @@ from app.services.households import (
     transfer_household_ownership,
     update_household,
 )
+from app.services.realtime_connections import connection_manager
+from app.services.realtime_memberships import revoke_realtime_membership
 
 router = APIRouter(prefix="/api/v1/households", tags=["households"])
 
@@ -134,6 +138,8 @@ def leave_current_household(
     household_id: UUID,
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
+    redis_client: Annotated[Redis, Depends(get_redis)],
+    background_tasks: BackgroundTasks,
 ) -> Response:
     try:
         leave_household(
@@ -152,6 +158,13 @@ def leave_current_household(
             detail="Transfer household ownership before leaving the household.",
         ) from error
 
+    background_tasks.add_task(
+        revoke_realtime_membership,
+        redis_client,
+        connection_manager,
+        household_id,
+        current_user.id,
+    )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -164,6 +177,8 @@ def remove_current_household_member(
     member_user_id: UUID,
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
+    redis_client: Annotated[Redis, Depends(get_redis)],
+    background_tasks: BackgroundTasks,
 ) -> Response:
     try:
         remove_household_member(
@@ -193,6 +208,13 @@ def remove_current_household_member(
             detail="Transfer ownership before removing the household owner.",
         ) from error
 
+    background_tasks.add_task(
+        revoke_realtime_membership,
+        redis_client,
+        connection_manager,
+        household_id,
+        member_user_id,
+    )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

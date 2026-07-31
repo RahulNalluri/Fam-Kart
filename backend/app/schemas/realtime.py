@@ -49,3 +49,14 @@ class RealtimeEventEnvelope(BaseModel):
     household_id: UUID
     occurred_at: AwareDatetime
     payload: GroceryItemRealtimePayload
+
+
+class RealtimeMembershipRevokedEnvelope(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_version: Literal[1] = 1
+    control_type: Literal["household.membership_revoked"] = (
+        "household.membership_revoked"
+    )
+    household_id: UUID
+    user_id: UUID

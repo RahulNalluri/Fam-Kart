@@ -54,6 +54,42 @@ class RealtimeConnectionManager:
                 for connections in household_connections.values()
             )
 
+    async def disconnect_user(
+        self,
+        household_id: UUID,
+        user_id: UUID,
+        *,
+        code: int,
+        reason: str,
+    ) -> int:
+        async with self._lock:
+            household_connections = self._connections.get(household_id)
+            if household_connections is None:
+                connections: list[WebSocket] = []
+            else:
+                connections = list(household_connections.pop(user_id, set()))
+                if not household_connections:
+                    self._connections.pop(household_id)
+
+        return await self._close_connections(connections, code, reason)
+
+    async def disconnect_household(
+        self,
+        household_id: UUID,
+        *,
+        code: int,
+        reason: str,
+    ) -> int:
+        async with self._lock:
+            household_connections = self._connections.pop(household_id, {})
+            connections = [
+                websocket
+                for user_connections in household_connections.values()
+                for websocket in user_connections
+            ]
+
+        return await self._close_connections(connections, code, reason)
+
     async def broadcast(
         self,
         household_id: UUID,
@@ -101,6 +137,35 @@ class RealtimeConnectionManager:
     async def _send_event(self, websocket: WebSocket, event_json: str) -> bool:
         try:
             await websocket.send_text(event_json)
+        except (OSError, RuntimeError, WebSocketDisconnect):
+            return False
+        return True
+
+    async def _close_connections(
+        self,
+        connections: list[WebSocket],
+        code: int,
+        reason: str,
+    ) -> int:
+        if not connections:
+            return 0
+
+        results = await asyncio.gather(
+            *(
+                self._close_connection(websocket, code, reason)
+                for websocket in connections
+            ),
+        )
+        return sum(results)
+
+    async def _close_connection(
+        self,
+        websocket: WebSocket,
+        code: int,
+        reason: str,
+    ) -> bool:
+        try:
+            await websocket.close(code=code, reason=reason)
         except (OSError, RuntimeError, WebSocketDisconnect):
             return False
         return True

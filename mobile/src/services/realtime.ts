@@ -168,7 +168,6 @@ export class HouseholdRealtimeClient {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectAttempt = 0;
   private reconnectEnabled = false;
-  private hasConnected = false;
   private state: RealtimeConnectionState = "disconnected";
 
   constructor(options: HouseholdRealtimeClientOptions) {
@@ -222,7 +221,6 @@ export class HouseholdRealtimeClient {
   disconnect(): void {
     this.reconnectEnabled = false;
     this.reconnectAttempt = 0;
-    this.hasConnected = false;
     this.cancelReconnect();
     const socket = this.socket;
     this.socket = null;
@@ -256,11 +254,9 @@ export class HouseholdRealtimeClient {
     this.socket = socket;
     socket.onopen = () => {
       if (this.socket === socket) {
-        const recovered = this.hasConnected;
-        this.hasConnected = true;
         this.reconnectAttempt = 0;
         this.setState("connected");
-        if (recovered) {
+        if (isReconnect) {
           this.onReconnect?.();
         }
       }
@@ -294,7 +290,6 @@ export class HouseholdRealtimeClient {
         this.scheduleReconnect();
       } else {
         this.reconnectEnabled = false;
-        this.hasConnected = false;
         this.setState("disconnected");
       }
     };

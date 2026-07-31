@@ -304,6 +304,35 @@ describe("mobile household real-time client", () => {
     client.disconnect();
   });
 
+  it("reports recovery when the first successful connection follows a retry", () => {
+    jest.useFakeTimers();
+    const firstSocket = new FakeSocket();
+    const recoveredSocket = new FakeSocket();
+    const socketFactory = jest
+      .fn<ReturnType<RealtimeSocketFactory>, Parameters<RealtimeSocketFactory>>()
+      .mockReturnValueOnce(firstSocket)
+      .mockReturnValueOnce(recoveredSocket);
+    const onReconnect = jest.fn();
+    const client = new HouseholdRealtimeClient({
+      householdId,
+      accessToken: "access-token",
+      onEvent: jest.fn(),
+      onReconnect,
+      socketFactory,
+      reconnectInitialDelayMs: 100,
+      reconnectMaxDelayMs: 400,
+    });
+    client.connect();
+
+    firstSocket.onclose?.({ code: 1013, reason: "Try again later." });
+    jest.advanceTimersByTime(100);
+    recoveredSocket.onopen?.();
+
+    expect(client.connectionState).toBe("connected");
+    expect(onReconnect).toHaveBeenCalledTimes(1);
+    client.disconnect();
+  });
+
   it("caps exponential backoff and resets it after recovery", () => {
     jest.useFakeTimers();
     const sockets = [

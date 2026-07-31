@@ -80,6 +80,64 @@ def test_unregister_removes_empty_user_and_household_buckets() -> None:
     asyncio.run(scenario())
 
 
+def test_disconnect_user_revokes_only_target_members_connections() -> None:
+    async def scenario() -> None:
+        manager = RealtimeConnectionManager()
+        household_id = uuid4()
+        removed_user_id = uuid4()
+        remaining_user_id = uuid4()
+        removed_connections = (build_websocket(), build_websocket())
+        remaining_connection = build_websocket()
+
+        for websocket in removed_connections:
+            await manager.register(household_id, removed_user_id, websocket)
+        await manager.register(household_id, remaining_user_id, remaining_connection)
+
+        disconnected = await manager.disconnect_user(
+            household_id,
+            removed_user_id,
+            code=4404,
+            reason="Household not found.",
+        )
+
+        assert disconnected == 2
+        for websocket in removed_connections:
+            websocket.close.assert_awaited_once_with(
+                code=4404,
+                reason="Household not found.",
+            )
+        remaining_connection.close.assert_not_awaited()
+        assert await manager.connection_count(household_id, removed_user_id) == 0
+        assert await manager.connection_count(household_id, remaining_user_id) == 1
+
+    asyncio.run(scenario())
+
+
+def test_disconnect_household_forces_every_connection_to_recover() -> None:
+    async def scenario() -> None:
+        manager = RealtimeConnectionManager()
+        household_id = uuid4()
+        connections = (build_websocket(), build_websocket())
+        for websocket in connections:
+            await manager.register(household_id, uuid4(), websocket)
+
+        disconnected = await manager.disconnect_household(
+            household_id,
+            code=1013,
+            reason="Real-time service unavailable.",
+        )
+
+        assert disconnected == 2
+        assert await manager.connection_count(household_id) == 0
+        for websocket in connections:
+            websocket.close.assert_awaited_once_with(
+                code=1013,
+                reason="Real-time service unavailable.",
+            )
+
+    asyncio.run(scenario())
+
+
 def test_broadcast_delivers_validated_json_only_to_target_household() -> None:
     async def scenario() -> None:
         manager = RealtimeConnectionManager()

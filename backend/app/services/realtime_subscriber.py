@@ -4,12 +4,16 @@ from contextlib import suppress
 from typing import Protocol, cast
 from uuid import UUID
 
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
 from app.core.config import Settings, settings
-from app.schemas.realtime import RealtimeEventEnvelope
+from app.schemas.realtime import (
+    RealtimeCloseCode,
+    RealtimeEventEnvelope,
+    RealtimeMembershipRevokedEnvelope,
+)
 from app.services.realtime_channels import household_event_channel
 from app.services.realtime_connections import RealtimeConnectionManager
 
@@ -28,6 +32,12 @@ class RealtimePubSub(Protocol):
     async def aclose(self) -> None: ...
 
 
+RealtimeRedisMessage = RealtimeEventEnvelope | RealtimeMembershipRevokedEnvelope
+realtime_redis_message_adapter: TypeAdapter[RealtimeRedisMessage] = TypeAdapter(
+    RealtimeRedisMessage,
+)
+
+
 async def subscribe_to_household_events(
     redis_client: Redis,
     household_id: UUID,
@@ -43,9 +53,16 @@ async def subscribe_to_household_events(
         if ready_event is not None:
             ready_event.set()
         async for message in pubsub.listen():
-            event = _validate_household_message(message, household_id)
-            if event is not None:
-                await connection_manager.broadcast(household_id, event)
+            realtime_message = _validate_household_message(message, household_id)
+            if isinstance(realtime_message, RealtimeEventEnvelope):
+                await connection_manager.broadcast(household_id, realtime_message)
+            elif isinstance(realtime_message, RealtimeMembershipRevokedEnvelope):
+                await connection_manager.disconnect_user(
+                    household_id,
+                    realtime_message.user_id,
+                    code=int(RealtimeCloseCode.HOUSEHOLD_NOT_FOUND),
+                    reason="Household not found.",
+                )
     except RedisError as error:
         raise RealtimeEventSubscribeError(
             "Unable to receive real-time events.",
@@ -60,7 +77,7 @@ async def subscribe_to_household_events(
 def _validate_household_message(
     message: object,
     household_id: UUID,
-) -> RealtimeEventEnvelope | None:
+) -> RealtimeRedisMessage | None:
     if not isinstance(message, dict) or message.get("type") != "message":
         return None
 
@@ -69,10 +86,10 @@ def _validate_household_message(
         return None
 
     try:
-        event = RealtimeEventEnvelope.model_validate_json(data)
+        realtime_message = realtime_redis_message_adapter.validate_json(data)
     except ValidationError:
         return None
 
-    if event.household_id != household_id:
+    if realtime_message.household_id != household_id:
         return None
-    return event
+    return realtime_message

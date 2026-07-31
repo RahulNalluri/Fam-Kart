@@ -12,6 +12,7 @@ from app.schemas.realtime import (
     GroceryItemRealtimePayload,
     RealtimeEventEnvelope,
     RealtimeEventType,
+    RealtimeMembershipRevokedEnvelope,
 )
 from app.services.realtime_connections import RealtimeConnectionManager
 from app.services.realtime_subscriber import (
@@ -84,6 +85,7 @@ def build_redis_client(pubsub: FakePubSub) -> Redis:
 def build_connection_manager() -> RealtimeConnectionManager:
     manager = Mock(spec=RealtimeConnectionManager)
     manager.broadcast = AsyncMock(return_value=1)
+    manager.disconnect_user = AsyncMock(return_value=1)
     return manager
 
 
@@ -146,6 +148,35 @@ def test_malformed_and_cross_household_messages_are_ignored() -> None:
 
     manager.broadcast.assert_not_awaited()
     assert pubsub.is_closed
+
+
+def test_membership_revocation_disconnects_only_the_target_user() -> None:
+    household_id = uuid4()
+    user_id = uuid4()
+    revocation = RealtimeMembershipRevokedEnvelope(
+        household_id=household_id,
+        user_id=user_id,
+    )
+    pubsub = FakePubSub(
+        [{"type": "message", "data": revocation.model_dump_json()}],
+    )
+    manager = build_connection_manager()
+
+    asyncio.run(
+        subscribe_to_household_events(
+            build_redis_client(pubsub),
+            household_id,
+            manager,
+        ),
+    )
+
+    manager.disconnect_user.assert_awaited_once_with(
+        household_id,
+        user_id,
+        code=4404,
+        reason="Household not found.",
+    )
+    manager.broadcast.assert_not_awaited()
 
 
 @pytest.mark.parametrize("failure_stage", ["subscribe", "listen"])

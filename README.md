@@ -285,6 +285,19 @@ warnings remain until their owning app action explicitly clears them. Normal and
 late background closures produce no visible warning, and technical close codes
 and server reasons remain outside rendered UI.
 
+The Phase 6 reliability review now forces household sockets to reconnect when a
+backend loses its Redis subscription, preventing a silent stale-data window.
+Household leave and member removal revoke local sockets and publish an internal
+Redis control message so connections on other backend instances are revoked with
+the same privacy-preserving household close outcome. Mobile recovery also runs
+after a retry succeeds even when the original socket never opened, ensuring cache
+refresh and temporary-warning cleanup always occur.
+
+Membership-revocation publishing is currently best effort: the backend always
+revokes its local sockets, while healthy Redis delivery propagates the action to
+other backend instances. Durable cross-service delivery belongs to the production
+outbox and hardening work in Phase 13.
+
 ## Quick Start
 
 PowerShell:

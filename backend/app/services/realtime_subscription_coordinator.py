@@ -9,6 +9,7 @@ from redis.asyncio import Redis
 
 from app.core.config import Settings, settings
 from app.core.logging import logger
+from app.schemas.realtime import RealtimeCloseCode
 from app.services.realtime_connections import RealtimeConnectionManager
 from app.services.realtime_subscriber import (
     RealtimeEventSubscribeError,
@@ -135,16 +136,20 @@ class RealtimeSubscriptionCoordinator:
     ) -> None:
         recovery_attempts = 0
         while True:
+            attempt_ready = asyncio.Event()
             try:
                 await self._run_subscription_attempt(
                     household_id,
                     ready_event,
                     recovery_attempts,
+                    attempt_ready,
                 )
             except RealtimeEventSubscribeError as error:
                 if not ready_event.is_set():
                     raise
 
+                if attempt_ready.is_set():
+                    recovery_attempts = 0
                 recovery_attempts += 1
                 delay = min(
                     self._config.realtime_reconnect_initial_delay_seconds
@@ -163,6 +168,11 @@ class RealtimeSubscriptionCoordinator:
                         else type(error).__name__
                     ),
                 )
+                await self._connection_manager.disconnect_household(
+                    household_id,
+                    code=int(RealtimeCloseCode.SERVICE_UNAVAILABLE),
+                    reason="Real-time service unavailable.",
+                )
                 await self._recovery_sleep(delay)
 
     async def _run_subscription_attempt(
@@ -170,8 +180,8 @@ class RealtimeSubscriptionCoordinator:
         household_id: UUID,
         ready_event: asyncio.Event,
         recovery_attempts: int,
+        attempt_ready: asyncio.Event,
     ) -> None:
-        attempt_ready = asyncio.Event()
         subscriber_task = asyncio.create_task(
             self._subscriber(
                 self._redis_client,
