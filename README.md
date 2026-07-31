@@ -301,9 +301,11 @@ outbox and hardening work in Phase 13.
 The mobile localization foundation uses Expo Localization to inspect device
 language preferences, i18next to resolve supported languages and English fallback,
 and react-i18next to provide the configured instance to React Native screens.
-English (`en`) and Telugu (`te`) are the only supported language codes at this
-stage. Translation resources, account preference synchronization, and language
-switching are intentionally handled in later Phase 7 modules.
+English (`en`) and Telugu (`te`) resources now cover the welcome screen, backend
+status, accessibility status, and real-time connection messages. Both dictionaries
+share a typed structure and are tested for matching keys. Applying those keys to
+screens, account preference synchronization, and manual language switching remain
+later Phase 7 modules.
 
 ## Quick Start
 

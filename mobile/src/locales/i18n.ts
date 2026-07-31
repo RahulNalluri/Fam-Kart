@@ -7,6 +7,7 @@ import {
   SupportedLanguage,
   resolveSupportedLanguage,
 } from "./config";
+import { translationResources } from "./resources";
 
 export function createAppI18n(
   language: SupportedLanguage = resolveSupportedLanguage(),
@@ -19,6 +20,7 @@ export function createAppI18n(
       escapeValue: false,
     },
     lng: language,
+    resources: translationResources,
     supportedLngs: [...SUPPORTED_LANGUAGES],
   });
   return instance;

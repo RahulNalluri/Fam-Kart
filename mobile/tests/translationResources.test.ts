@@ -1,0 +1,50 @@
+import { englishTranslations } from "../src/locales/en";
+import { createAppI18n } from "../src/locales/i18n";
+import { teluguTranslations } from "../src/locales/te";
+
+function collectTranslationKeys(value: Record<string, unknown>, prefix = ""): string[] {
+  return Object.entries(value).flatMap(([key, child]) => {
+    const path = prefix ? `${prefix}.${key}` : key;
+    return typeof child === "string"
+      ? [path]
+      : collectTranslationKeys(child as Record<string, unknown>, path);
+  });
+}
+
+describe("translation resources", () => {
+  it("provides matching English and Telugu translation keys", () => {
+    expect(collectTranslationKeys(teluguTranslations).sort()).toEqual(
+      collectTranslationKeys(englishTranslations).sort(),
+    );
+  });
+
+  it("returns English application text", () => {
+    const i18n = createAppI18n("en");
+
+    expect(i18n.t("common.appName")).toBe("FamilyKart AI");
+    expect(i18n.t("home.backendStatus.connected")).toBe("Connected");
+    expect(i18n.t("realtime.authenticationRequired")).toBe(
+      "Your session has expired. Please sign in again.",
+    );
+  });
+
+  it("returns Telugu application text", () => {
+    const i18n = createAppI18n("te");
+
+    expect(i18n.t("home.description")).toBe(
+      "ప్రతి కుటుంబానికి కలిసి షాపింగ్ చేయడం సులభం.",
+    );
+    expect(i18n.t("home.backendStatus.unavailable")).toBe("అందుబాటులో లేదు");
+    expect(i18n.t("realtime.connectionInterrupted")).toBe(
+      "తక్షణ కనెక్షన్‌కు అంతరాయం ఏర్పడింది. మళ్లీ కనెక్ట్ అవుతోంది.",
+    );
+  });
+
+  it("falls back to English for an unsupported language", async () => {
+    const i18n = createAppI18n("en");
+
+    await i18n.changeLanguage("fr");
+
+    expect(i18n.t("home.backendStatus.label")).toBe("Backend status");
+  });
+});

@@ -1,0 +1,26 @@
+import { TranslationResources } from "./types";
+
+export const teluguTranslations = {
+  common: {
+    appName: "FamilyKart AI",
+  },
+  home: {
+    description: "ప్రతి కుటుంబానికి కలిసి షాపింగ్ చేయడం సులభం.",
+    backendStatus: {
+      label: "బ్యాక్‌ఎండ్ స్థితి",
+      checking: "తనిఖీ చేస్తోంది...",
+      connected: "కనెక్ట్ అయింది",
+      unavailable: "అందుబాటులో లేదు",
+      checkingAccessibilityLabel: "బ్యాక్‌ఎండ్ స్థితిని తనిఖీ చేస్తోంది",
+    },
+  },
+  realtime: {
+    normal: "తక్షణ నవీకరణలు సాధారణంగా ఆగిపోయాయి.",
+    authenticationRequired: "మీ సెషన్ గడువు ముగిసింది. దయచేసి మళ్లీ సైన్ ఇన్ చేయండి.",
+    householdUnavailable: "ఈ కుటుంబం ఇకపై మీ ఖాతాకు అందుబాటులో లేదు.",
+    serviceUnavailable:
+      "తక్షణ నవీకరణలు తాత్కాలికంగా అందుబాటులో లేవు. మళ్లీ కనెక్ట్ అవుతోంది.",
+    connectionInterrupted:
+      "తక్షణ కనెక్షన్‌కు అంతరాయం ఏర్పడింది. మళ్లీ కనెక్ట్ అవుతోంది.",
+  },
+} satisfies TranslationResources;
