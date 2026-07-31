@@ -278,6 +278,13 @@ permanent action, and successful recovery emits a callback that can clear a stal
 warning. Navigation and account-state changes remain owned by their future mobile
 screens rather than the WebSocket layer.
 
+A focused mobile presentation integration now joins the lifecycle hook, notice
+state, and accessible status component. Retryable warnings appear while recovery
+is pending and clear after reconnection; permanent authentication or household
+warnings remain until their owning app action explicitly clears them. Normal and
+late background closures produce no visible warning, and technical close codes
+and server reasons remain outside rendered UI.
+
 ## Quick Start
 
 PowerShell:
