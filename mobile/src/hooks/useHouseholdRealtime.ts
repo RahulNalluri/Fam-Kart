@@ -37,6 +37,9 @@ export type UseHouseholdRealtimeOptions = {
   accessToken: string | null;
   onError?: (error: unknown) => void;
   onCloseOutcome?: (outcome: RealtimeCloseOutcome) => void;
+  onAuthenticationRequired?: () => void;
+  onHouseholdUnavailable?: (householdId: string) => void;
+  onRecovered?: () => void;
   clientFactory?: HouseholdRealtimeClientFactory;
   appState?: RealtimeAppState;
 };
@@ -50,16 +53,25 @@ export function useHouseholdRealtime({
   accessToken,
   onError,
   onCloseOutcome,
+  onAuthenticationRequired,
+  onHouseholdUnavailable,
+  onRecovered,
   clientFactory = createHouseholdRealtimeClient,
   appState = mobileAppState,
 }: UseHouseholdRealtimeOptions): RealtimeConnectionState {
   const queryClient = useQueryClient();
   const errorHandlerRef = useRef(onError);
   const closeOutcomeHandlerRef = useRef(onCloseOutcome);
+  const authenticationRequiredHandlerRef = useRef(onAuthenticationRequired);
+  const householdUnavailableHandlerRef = useRef(onHouseholdUnavailable);
+  const recoveredHandlerRef = useRef(onRecovered);
   const [connectionState, setConnectionState] =
     useState<RealtimeConnectionState>("disconnected");
   errorHandlerRef.current = onError;
   closeOutcomeHandlerRef.current = onCloseOutcome;
+  authenticationRequiredHandlerRef.current = onAuthenticationRequired;
+  householdUnavailableHandlerRef.current = onHouseholdUnavailable;
+  recoveredHandlerRef.current = onRecovered;
 
   useEffect(() => {
     if (!householdId || !accessToken?.trim()) {
@@ -110,11 +122,17 @@ export function useHouseholdRealtime({
           if (active && appIsActive) {
             eventOrdering.reset();
             reportFailure(refreshHouseholdGroceryQueries(queryClient, householdId));
+            recoveredHandlerRef.current?.();
           }
         },
         onCloseOutcome: (outcome) => {
           if (active && appIsActive && outcome.kind !== "normal") {
             closeOutcomeHandlerRef.current?.(outcome);
+            if (outcome.kind === "authentication_required") {
+              authenticationRequiredHandlerRef.current?.();
+            } else if (outcome.kind === "household_unavailable") {
+              householdUnavailableHandlerRef.current?.(householdId);
+            }
           }
         },
       });

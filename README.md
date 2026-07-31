@@ -270,6 +270,14 @@ reasons. Permanent session and household failures are visually distinct from
 temporary interruptions that are reconnecting. It is ready to mount in the
 authenticated grocery interface when that screen is implemented.
 
+The household real-time lifecycle now routes permanent failures to explicit app
+actions: expired authentication requests a sign-in flow, while unavailable
+household access identifies which selected household must be cleared. Temporary
+service and network interruptions continue reconnecting without triggering either
+permanent action, and successful recovery emits a callback that can clear a stale
+warning. Navigation and account-state changes remain owned by their future mobile
+screens rather than the WebSocket layer.
+
 ## Quick Start
 
 PowerShell:

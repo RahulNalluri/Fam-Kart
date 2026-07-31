@@ -11,6 +11,7 @@ import {
 } from "../src/hooks/useHouseholdRealtime";
 import {
   HouseholdRealtimeClientOptions,
+  RealtimeCloseOutcome,
   RealtimeConnectionState,
 } from "../src/services/realtime";
 import { RealtimeEvent } from "../src/types/realtime";
@@ -62,13 +63,17 @@ class FakeRealtimeClient implements HouseholdRealtimeConnection {
   }
 
   reportAuthenticationClose(): void {
-    this.options.onCloseOutcome?.({
+    this.reportClose({
       code: 4401,
       reason: "Authentication required.",
       kind: "authentication_required",
       message: "Your session has expired. Please sign in again.",
       retryable: false,
     });
+  }
+
+  reportClose(outcome: RealtimeCloseOutcome): void {
+    this.options.onCloseOutcome?.(outcome);
   }
 }
 
@@ -136,6 +141,8 @@ describe("useHouseholdRealtime", () => {
   it("forwards an understandable terminal close outcome", () => {
     const { clients, clientFactory, wrapper } = buildHarness();
     const onCloseOutcome = jest.fn();
+    const onAuthenticationRequired = jest.fn();
+    const onHouseholdUnavailable = jest.fn();
     renderHook(
       () =>
         useHouseholdRealtime({
@@ -143,6 +150,8 @@ describe("useHouseholdRealtime", () => {
           accessToken: "access-token",
           clientFactory,
           onCloseOutcome,
+          onAuthenticationRequired,
+          onHouseholdUnavailable,
         }),
       { wrapper },
     );
@@ -156,6 +165,103 @@ describe("useHouseholdRealtime", () => {
       message: "Your session has expired. Please sign in again.",
       retryable: false,
     });
+    expect(onAuthenticationRequired).toHaveBeenCalledTimes(1);
+    expect(onHouseholdUnavailable).not.toHaveBeenCalled();
+  });
+
+  it("requests household cleanup when access is unavailable", () => {
+    const { clients, clientFactory, wrapper } = buildHarness();
+    const onAuthenticationRequired = jest.fn();
+    const onHouseholdUnavailable = jest.fn();
+    renderHook(
+      () =>
+        useHouseholdRealtime({
+          householdId: firstHouseholdId,
+          accessToken: "access-token",
+          clientFactory,
+          onAuthenticationRequired,
+          onHouseholdUnavailable,
+        }),
+      { wrapper },
+    );
+
+    act(() =>
+      clients[0].reportClose({
+        code: 4404,
+        reason: "Household not found.",
+        kind: "household_unavailable",
+        message: "This household is no longer available to your account.",
+        retryable: false,
+      }),
+    );
+
+    expect(onHouseholdUnavailable).toHaveBeenCalledWith(firstHouseholdId);
+    expect(onAuthenticationRequired).not.toHaveBeenCalled();
+  });
+
+  it("reports temporary interruption without requesting a permanent action", () => {
+    const { clients, clientFactory, wrapper } = buildHarness();
+    const onCloseOutcome = jest.fn();
+    const onAuthenticationRequired = jest.fn();
+    const onHouseholdUnavailable = jest.fn();
+    renderHook(
+      () =>
+        useHouseholdRealtime({
+          householdId: firstHouseholdId,
+          accessToken: "access-token",
+          clientFactory,
+          onCloseOutcome,
+          onAuthenticationRequired,
+          onHouseholdUnavailable,
+        }),
+      { wrapper },
+    );
+    const temporaryOutcome: RealtimeCloseOutcome = {
+      code: 1013,
+      reason: "Real-time service unavailable.",
+      kind: "service_unavailable",
+      message: "Real-time updates are temporarily unavailable. Reconnecting.",
+      retryable: true,
+    };
+
+    act(() => clients[0].reportClose(temporaryOutcome));
+
+    expect(onCloseOutcome).toHaveBeenCalledWith(temporaryOutcome);
+    expect(onAuthenticationRequired).not.toHaveBeenCalled();
+    expect(onHouseholdUnavailable).not.toHaveBeenCalled();
+  });
+
+  it("ignores normal closure without requesting an action", () => {
+    const { clients, clientFactory, wrapper } = buildHarness();
+    const onCloseOutcome = jest.fn();
+    const onAuthenticationRequired = jest.fn();
+    const onHouseholdUnavailable = jest.fn();
+    renderHook(
+      () =>
+        useHouseholdRealtime({
+          householdId: firstHouseholdId,
+          accessToken: "access-token",
+          clientFactory,
+          onCloseOutcome,
+          onAuthenticationRequired,
+          onHouseholdUnavailable,
+        }),
+      { wrapper },
+    );
+
+    act(() =>
+      clients[0].reportClose({
+        code: 1000,
+        reason: "Normal closure.",
+        kind: "normal",
+        message: "Real-time updates stopped normally.",
+        retryable: false,
+      }),
+    );
+
+    expect(onCloseOutcome).not.toHaveBeenCalled();
+    expect(onAuthenticationRequired).not.toHaveBeenCalled();
+    expect(onHouseholdUnavailable).not.toHaveBeenCalled();
   });
 
   it("synchronizes incoming events with the affected grocery queries", async () => {
@@ -185,6 +291,7 @@ describe("useHouseholdRealtime", () => {
 
   it("refreshes only the active household after reconnection", async () => {
     const { queryClient, clients, clientFactory, wrapper } = buildHarness();
+    const onRecovered = jest.fn();
     const firstKey = groceryQueryKeys.items(firstHouseholdId, sessionId);
     const secondKey = groceryQueryKeys.items(secondHouseholdId, sessionId);
     queryClient.setQueryData(firstKey, ["Milk"]);
@@ -195,6 +302,7 @@ describe("useHouseholdRealtime", () => {
           householdId: firstHouseholdId,
           accessToken: "access-token",
           clientFactory,
+          onRecovered,
         }),
       { wrapper },
     );
@@ -205,6 +313,7 @@ describe("useHouseholdRealtime", () => {
       expect(queryClient.getQueryState(firstKey)?.isInvalidated).toBe(true);
     });
     expect(queryClient.getQueryState(secondKey)?.isInvalidated).toBe(false);
+    expect(onRecovered).toHaveBeenCalledTimes(1);
     queryClient.clear();
   });
 
