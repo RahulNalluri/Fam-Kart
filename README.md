@@ -264,6 +264,12 @@ access (`4404`) stops without retrying, and temporary service (`1013`) or networ
 interruptions report recovery messages while automatic reconnection continues.
 Normal client closure remains silent at the lifecycle-hook boundary.
 
+The reusable mobile `RealtimeStatusNotice` presents these safe messages as an
+accessible status band without exposing numeric WebSocket codes or raw server
+reasons. Permanent session and household failures are visually distinct from
+temporary interruptions that are reconnecting. It is ready to mount in the
+authenticated grocery interface when that screen is implemented.
+
 ## Quick Start
 
 PowerShell:
