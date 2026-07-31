@@ -1,0 +1,27 @@
+import { createInstance, i18n } from "i18next";
+import { initReactI18next } from "react-i18next";
+
+import {
+  DEFAULT_LANGUAGE,
+  SUPPORTED_LANGUAGES,
+  SupportedLanguage,
+  resolveSupportedLanguage,
+} from "./config";
+
+export function createAppI18n(
+  language: SupportedLanguage = resolveSupportedLanguage(),
+): i18n {
+  const instance = createInstance();
+  void instance.use(initReactI18next).init({
+    fallbackLng: DEFAULT_LANGUAGE,
+    initAsync: false,
+    interpolation: {
+      escapeValue: false,
+    },
+    lng: language,
+    supportedLngs: [...SUPPORTED_LANGUAGES],
+  });
+  return instance;
+}
+
+export const appI18n = createAppI18n();

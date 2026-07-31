@@ -298,6 +298,13 @@ revokes its local sockets, while healthy Redis delivery propagates the action to
 other backend instances. Durable cross-service delivery belongs to the production
 outbox and hardening work in Phase 13.
 
+The mobile localization foundation uses Expo Localization to inspect device
+language preferences, i18next to resolve supported languages and English fallback,
+and react-i18next to provide the configured instance to React Native screens.
+English (`en`) and Telugu (`te`) are the only supported language codes at this
+stage. Translation resources, account preference synchronization, and language
+switching are intentionally handled in later Phase 7 modules.
+
 ## Quick Start
 
 PowerShell:
