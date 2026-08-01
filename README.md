@@ -305,8 +305,12 @@ English (`en`) and Telugu (`te`) resources now cover the welcome screen, backend
 status, accessibility status, and real-time connection messages. Both dictionaries
 share a typed structure and are tested for matching keys. The welcome screen and
 real-time status notice consume these resources, including their accessibility
-labels, so they follow the active i18next language. Account preference
-synchronization and manual language switching remain later Phase 7 modules.
+labels, so they follow the active i18next language. A mobile language-preference
+hook now applies a supported authenticated profile preference when it becomes
+available, while preserving the device-selected language during profile loading
+and ignoring malformed values. The future mobile authentication flow will supply
+the profile value to this hook. Manual language switching remains a later Phase 7
+module.
 
 ## Quick Start
 
