@@ -11,10 +11,27 @@ function collectTranslationKeys(value: Record<string, unknown>, prefix = ""): st
   });
 }
 
+function collectTranslationValues(value: Record<string, unknown>): string[] {
+  return Object.values(value).flatMap((child) =>
+    typeof child === "string"
+      ? [child]
+      : collectTranslationValues(child as Record<string, unknown>),
+  );
+}
+
 describe("translation resources", () => {
   it("provides matching English and Telugu translation keys", () => {
     expect(collectTranslationKeys(teluguTranslations).sort()).toEqual(
       collectTranslationKeys(englishTranslations).sort(),
+    );
+  });
+
+  it.each([
+    ["English", englishTranslations],
+    ["Telugu", teluguTranslations],
+  ])("does not contain blank %s translations", (_language, translations) => {
+    expect(collectTranslationValues(translations).every((value) => value.trim())).toBe(
+      true,
     );
   });
 

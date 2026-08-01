@@ -1,6 +1,6 @@
 import * as SecureStore from "expo-secure-store";
 
-import { SupportedLanguage, isSupportedLanguage } from "./config";
+import { SupportedLanguage, normalizeSupportedLanguage } from "./config";
 
 export const SELECTED_LANGUAGE_STORAGE_KEY = "familykart.selected-language";
 
@@ -15,8 +15,7 @@ export async function loadSelectedLanguage(
   storage: LanguageStorage = secureLanguageStorage,
 ): Promise<SupportedLanguage | null> {
   const storedLanguage = await storage.getItemAsync(SELECTED_LANGUAGE_STORAGE_KEY);
-  const normalizedLanguage = storedLanguage?.toLowerCase();
-  return isSupportedLanguage(normalizedLanguage) ? normalizedLanguage : null;
+  return normalizeSupportedLanguage(storedLanguage);
 }
 
 export async function saveSelectedLanguage(

@@ -11,7 +11,18 @@ export function isSupportedLanguage(
   language: string | null | undefined,
 ): language is SupportedLanguage {
   return SUPPORTED_LANGUAGES.some(
-    (supportedLanguage) => supportedLanguage === language?.toLowerCase(),
+    (supportedLanguage) => supportedLanguage === language,
+  );
+}
+
+export function normalizeSupportedLanguage(
+  language: string | null | undefined,
+): SupportedLanguage | null {
+  const normalizedLanguage = language?.toLowerCase();
+  return (
+    SUPPORTED_LANGUAGES.find(
+      (supportedLanguage) => supportedLanguage === normalizedLanguage,
+    ) ?? null
   );
 }
 
@@ -19,9 +30,9 @@ export function resolveSupportedLanguage(
   locales: readonly LanguageLocale[] = getLocales(),
 ): SupportedLanguage {
   for (const locale of locales) {
-    const languageCode = locale.languageCode?.toLowerCase();
-    if (isSupportedLanguage(languageCode)) {
-      return languageCode;
+    const language = normalizeSupportedLanguage(locale.languageCode);
+    if (language) {
+      return language;
     }
   }
 

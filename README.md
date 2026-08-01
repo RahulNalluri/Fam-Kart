@@ -333,6 +333,21 @@ fallbacks, while blank aliases, unknown keys, cross-item duplicates, and attempt
 to remap standard terms are rejected. Server persistence and alias-management APIs
 remain a separate backend module.
 
+Localization workflow tests now exercise the complete mobile precedence chain:
+device fallback, persisted manual selection, simulated app restart, and
+authenticated account override. They also confirm that switching languages updates
+multiple mounted surfaces together, unsupported account values cannot replace a
+valid restored language, and neither English nor Telugu resources contain blank
+translations.
+
+The Phase 7 localization review verified translated visible surfaces,
+accessibility labels, device/local/account precedence, persistence failure
+fallbacks, dictionary collision checks, and household alias isolation. It also
+corrected external language normalization so values such as `TE` are canonicalized
+to `te` before reaching i18next without weakening the TypeScript language guard.
+Registration and settings screens still need to mount these foundations, and
+household alias persistence still requires authenticated backend APIs.
+
 ## Quick Start
 
 PowerShell:
