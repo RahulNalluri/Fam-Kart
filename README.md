@@ -323,7 +323,15 @@ household staples alongside English names, Telugu names, English plurals, Telugu
 forms, and Telugu transliterations. Unicode, case, and whitespace normalization
 support deterministic exact-alias lookup, while index construction rejects an
 alias assigned to two different items. Fuzzy matching, quantities, units,
-household-specific aliases, and AI extraction remain separate later modules.
+and AI extraction remain separate later modules.
+
+Household grocery aliases now form a validated in-memory overlay on the standard
+mobile dictionary. Alias lists supplied by a future household API can map family
+nicknames, regional Telugu terms, or transliterations to existing canonical keys.
+Each household builds an independent index; standard aliases remain available as
+fallbacks, while blank aliases, unknown keys, cross-item duplicates, and attempts
+to remap standard terms are rejected. Server persistence and alias-management APIs
+remain a separate backend module.
 
 ## Quick Start
 
