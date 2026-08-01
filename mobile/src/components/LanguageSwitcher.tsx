@@ -8,13 +8,24 @@ import {
   isSupportedLanguage,
 } from "../locales/config";
 import { changeAppLanguage } from "../locales/i18n";
+import {
+  LanguageStorage,
+  saveSelectedLanguage,
+  secureLanguageStorage,
+} from "../locales/languageStorage";
 
 const languageLabelKeys = {
   en: "languageSwitcher.english",
   te: "languageSwitcher.telugu",
 } as const satisfies Record<SupportedLanguage, string>;
 
-export function LanguageSwitcher() {
+export type LanguageSwitcherProps = {
+  storage?: LanguageStorage;
+};
+
+export function LanguageSwitcher({
+  storage = secureLanguageStorage,
+}: LanguageSwitcherProps) {
   const { i18n, t } = useTranslation();
   const [isChanging, setIsChanging] = useState(false);
   const activeLanguage = isSupportedLanguage(i18n.resolvedLanguage)
@@ -27,6 +38,7 @@ export function LanguageSwitcher() {
     setIsChanging(true);
     try {
       await changeAppLanguage(language, i18n);
+      await saveSelectedLanguage(language, storage);
     } finally {
       setIsChanging(false);
     }

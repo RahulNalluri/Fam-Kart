@@ -313,7 +313,10 @@ the profile value to this hook. An accessible English/Telugu segmented selector 
 ready for the future registration screen, where the chosen value will be submitted
 as `preferred_language`, and for profile settings where users can change it later.
 The selector is intentionally not mounted on the temporary welcome screen.
-Persisting manual selections and saving profile updates remain later Phase 7 work.
+Manual selections are stored locally with Expo SecureStore and restored before the
+application renders, preventing a flash in the device language. A valid account
+preference can then override the local selection after authentication. Saving
+profile updates to the backend remains later Phase 7 work.
 
 ## Quick Start
 
