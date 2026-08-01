@@ -318,6 +318,13 @@ application renders, preventing a flash in the device language. A valid account
 preference can then override the local selection after authentication. Saving
 profile updates to the backend remains later Phase 7 work.
 
+The mobile grocery dictionary foundation defines canonical keys for common Indian
+household staples alongside English names, Telugu names, English plurals, Telugu
+forms, and Telugu transliterations. Unicode, case, and whitespace normalization
+support deterministic exact-alias lookup, while index construction rejects an
+alias assigned to two different items. Fuzzy matching, quantities, units,
+household-specific aliases, and AI extraction remain separate later modules.
+
 ## Quick Start
 
 PowerShell:
