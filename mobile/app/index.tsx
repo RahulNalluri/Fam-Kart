@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { useTranslation } from "react-i18next";
 
 import { getHealth } from "../src/services/api";
 
 type BackendStatus = "loading" | "connected" | "unavailable";
 
 export default function HomeScreen() {
+  const { t } = useTranslation();
   const [backendStatus, setBackendStatus] = useState<BackendStatus>("loading");
 
   useEffect(() => {
@@ -31,30 +33,33 @@ export default function HomeScreen() {
     };
   }, []);
 
-  const statusText =
-    backendStatus === "connected"
-      ? "Connected"
-      : backendStatus === "unavailable"
-        ? "Unavailable"
-        : "Checking...";
+  const statusTranslationKeys = {
+    connected: "home.backendStatus.connected",
+    loading: "home.backendStatus.checking",
+    unavailable: "home.backendStatus.unavailable",
+  } as const;
+  const statusText = t(statusTranslationKeys[backendStatus]);
+  const statusLabel = t("home.backendStatus.label");
 
   return (
     <View style={styles.container}>
       <View style={styles.content}>
         <Text accessibilityRole="header" style={styles.title}>
-          FamilyKart AI
+          {t("common.appName")}
         </Text>
-        <Text style={styles.description}>
-          Shared shopping made simple for every family.
-        </Text>
+        <Text style={styles.description}>{t("home.description")}</Text>
         <View
-          accessibilityLabel={`Backend status: ${statusText}`}
+          accessibilityLabel={`${statusLabel}: ${statusText}`}
           style={styles.statusRow}
         >
           {backendStatus === "loading" ? (
-            <ActivityIndicator accessibilityLabel="Checking backend status" />
+            <ActivityIndicator
+              accessibilityLabel={t("home.backendStatus.checkingAccessibilityLabel")}
+            />
           ) : null}
-          <Text style={styles.status}>Backend status: {statusText}</Text>
+          <Text style={styles.status}>
+            {statusLabel}: {statusText}
+          </Text>
         </View>
       </View>
     </View>

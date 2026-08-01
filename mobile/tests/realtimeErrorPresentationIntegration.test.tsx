@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen } from "@testing-library/react-native";
 import { ReactNode } from "react";
 import { AppStateStatus, Button, View } from "react-native";
+import { I18nextProvider } from "react-i18next";
 
 import { RealtimeStatusNotice } from "../src/components/RealtimeStatusNotice";
 import {
@@ -11,6 +12,7 @@ import {
   useHouseholdRealtime,
 } from "../src/hooks/useHouseholdRealtime";
 import { useRealtimeStatusNotice } from "../src/hooks/useRealtimeStatusNotice";
+import { createAppI18n } from "../src/locales/i18n";
 import {
   HouseholdRealtimeClientOptions,
   RealtimeCloseDetails,
@@ -95,7 +97,9 @@ function buildHarness(initialAppState: AppStateStatus = "active") {
     defaultOptions: { queries: { retry: false } },
   });
   const wrapper = ({ children }: { children: ReactNode }) => (
-    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    <I18nextProvider i18n={createAppI18n("en")}>
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    </I18nextProvider>
   );
 
   return { appState, clientFactory, clients, queryClient, wrapper };

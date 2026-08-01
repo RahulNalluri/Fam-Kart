@@ -303,9 +303,10 @@ language preferences, i18next to resolve supported languages and English fallbac
 and react-i18next to provide the configured instance to React Native screens.
 English (`en`) and Telugu (`te`) resources now cover the welcome screen, backend
 status, accessibility status, and real-time connection messages. Both dictionaries
-share a typed structure and are tested for matching keys. Applying those keys to
-screens, account preference synchronization, and manual language switching remain
-later Phase 7 modules.
+share a typed structure and are tested for matching keys. The welcome screen and
+real-time status notice consume these resources, including their accessibility
+labels, so they follow the active i18next language. Account preference
+synchronization and manual language switching remain later Phase 7 modules.
 
 ## Quick Start
 

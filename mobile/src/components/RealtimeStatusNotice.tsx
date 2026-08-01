@@ -1,22 +1,34 @@
 import { StyleSheet, Text, View } from "react-native";
+import { useTranslation } from "react-i18next";
 
-import { RealtimeCloseOutcome } from "../services/realtime";
+import { RealtimeCloseKind, RealtimeCloseOutcome } from "../services/realtime";
 
 export type RealtimeStatusNoticeProps = {
   outcome: RealtimeCloseOutcome | null;
 };
 
+const realtimeMessageKeys = {
+  authentication_required: "realtime.authenticationRequired",
+  connection_interrupted: "realtime.connectionInterrupted",
+  household_unavailable: "realtime.householdUnavailable",
+  normal: "realtime.normal",
+  service_unavailable: "realtime.serviceUnavailable",
+} as const satisfies Record<RealtimeCloseKind, string>;
+
 export function RealtimeStatusNotice({ outcome }: RealtimeStatusNoticeProps) {
+  const { t } = useTranslation();
+
   if (outcome === null || outcome.kind === "normal") {
     return null;
   }
 
   const isTemporary = outcome.retryable;
+  const message = t(realtimeMessageKeys[outcome.kind]);
 
   return (
     <View
       accessible
-      accessibilityLabel={outcome.message}
+      accessibilityLabel={message}
       accessibilityLiveRegion="polite"
       accessibilityRole="alert"
       style={[
@@ -30,7 +42,7 @@ export function RealtimeStatusNotice({ outcome }: RealtimeStatusNoticeProps) {
           isTemporary ? styles.temporaryMessage : styles.actionRequiredMessage,
         ]}
       >
-        {outcome.message}
+        {message}
       </Text>
     </View>
   );
