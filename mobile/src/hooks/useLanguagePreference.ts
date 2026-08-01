@@ -1,24 +1,13 @@
 import { i18n } from "i18next";
 import { useEffect } from "react";
 
-import { isSupportedLanguage } from "../locales/config";
-import { appI18n } from "../locales/i18n";
+import { appI18n, changeAppLanguage } from "../locales/i18n";
 
 export async function applyLanguagePreference(
   preferredLanguage: string | null | undefined,
   instance: i18n = appI18n,
 ): Promise<boolean> {
-  if (!isSupportedLanguage(preferredLanguage)) {
-    return false;
-  }
-
-  const activeLanguage = instance.resolvedLanguage ?? instance.language;
-  if (activeLanguage === preferredLanguage) {
-    return false;
-  }
-
-  await instance.changeLanguage(preferredLanguage);
-  return true;
+  return changeAppLanguage(preferredLanguage, instance);
 }
 
 export function useLanguagePreference(

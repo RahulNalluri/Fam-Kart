@@ -4,6 +4,11 @@ export const englishTranslations = {
   common: {
     appName: "FamilyKart AI",
   },
+  languageSwitcher: {
+    label: "Language",
+    english: "English",
+    telugu: "తెలుగు",
+  },
   home: {
     description: "Shared shopping made simple for every family.",
     backendStatus: {

@@ -4,6 +4,11 @@ export const teluguTranslations = {
   common: {
     appName: "FamilyKart AI",
   },
+  languageSwitcher: {
+    label: "భాష",
+    english: "English",
+    telugu: "తెలుగు",
+  },
   home: {
     description: "ప్రతి కుటుంబానికి కలిసి షాపింగ్ చేయడం సులభం.",
     backendStatus: {

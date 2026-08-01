@@ -5,6 +5,7 @@ import {
   DEFAULT_LANGUAGE,
   SUPPORTED_LANGUAGES,
   SupportedLanguage,
+  isSupportedLanguage,
   resolveSupportedLanguage,
 } from "./config";
 import { translationResources } from "./resources";
@@ -27,3 +28,20 @@ export function createAppI18n(
 }
 
 export const appI18n = createAppI18n();
+
+export async function changeAppLanguage(
+  language: string | null | undefined,
+  instance: i18n = appI18n,
+): Promise<boolean> {
+  if (!isSupportedLanguage(language)) {
+    return false;
+  }
+
+  const activeLanguage = instance.resolvedLanguage ?? instance.language;
+  if (activeLanguage === language) {
+    return false;
+  }
+
+  await instance.changeLanguage(language);
+  return true;
+}

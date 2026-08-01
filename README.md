@@ -309,8 +309,11 @@ labels, so they follow the active i18next language. A mobile language-preference
 hook now applies a supported authenticated profile preference when it becomes
 available, while preserving the device-selected language during profile loading
 and ignoring malformed values. The future mobile authentication flow will supply
-the profile value to this hook. Manual language switching remains a later Phase 7
-module.
+the profile value to this hook. An accessible English/Telugu segmented selector is
+ready for the future registration screen, where the chosen value will be submitted
+as `preferred_language`, and for profile settings where users can change it later.
+The selector is intentionally not mounted on the temporary welcome screen.
+Persisting manual selections and saving profile updates remain later Phase 7 work.
 
 ## Quick Start
 

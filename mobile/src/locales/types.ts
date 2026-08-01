@@ -2,6 +2,11 @@ export type TranslationResources = {
   common: {
     appName: string;
   };
+  languageSwitcher: {
+    label: string;
+    english: string;
+    telugu: string;
+  };
   home: {
     description: string;
     backendStatus: {
