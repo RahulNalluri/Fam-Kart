@@ -341,13 +341,16 @@ Household deletion cascades to its aliases, and optional creator attribution is
 cleared rather than deleting shared aliases when an account is removed. Repository,
 authorization, and API behavior remain the next backend modules.
 
-The household-alias repository now provides household-scoped create, list, lookup,
+The household-alias repository provides household-scoped create, list, lookup,
 update, and delete operations with rollback handling and database-race translation.
 The service authorizes both owners and members, hides household data from
 outsiders, normalizes multilingual aliases, validates the 15 current canonical
 grocery keys, prevents standard English, Telugu, or transliterated terms from being
-remapped, and returns domain-level duplicate errors. Authenticated API routes remain
-the next module.
+remapped, and returns domain-level duplicate errors. Authenticated household
+members can manage these aliases through `POST` and `GET` at
+`/api/v1/households/{household_id}/grocery-aliases`, plus `PATCH` and `DELETE` at
+`/api/v1/households/{household_id}/grocery-aliases/{alias_id}`. API responses use
+privacy-preserving household isolation and understandable validation messages.
 
 Localization workflow tests now exercise the complete mobile precedence chain:
 device fallback, persisted manual selection, simulated app restart, and

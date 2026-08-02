@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.auth import router as auth_router
 from app.api.grocery_items import router as grocery_items_router
 from app.api.health import router as health_router
+from app.api.household_grocery_aliases import router as household_grocery_aliases_router
 from app.api.households import router as households_router
 from app.api.realtime import router as realtime_router
 from app.api.shopping_sessions import router as shopping_sessions_router
@@ -64,6 +65,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router)
     app.include_router(health_router)
     app.include_router(households_router)
+    app.include_router(household_grocery_aliases_router)
     app.include_router(shopping_sessions_router)
     app.include_router(grocery_items_router)
     app.include_router(realtime_router)
