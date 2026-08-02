@@ -341,6 +341,14 @@ Household deletion cascades to its aliases, and optional creator attribution is
 cleared rather than deleting shared aliases when an account is removed. Repository,
 authorization, and API behavior remain the next backend modules.
 
+The household-alias repository now provides household-scoped create, list, lookup,
+update, and delete operations with rollback handling and database-race translation.
+The service authorizes both owners and members, hides household data from
+outsiders, normalizes multilingual aliases, validates the 15 current canonical
+grocery keys, prevents standard English, Telugu, or transliterated terms from being
+remapped, and returns domain-level duplicate errors. Authenticated API routes remain
+the next module.
+
 Localization workflow tests now exercise the complete mobile precedence chain:
 device fallback, persisted manual selection, simulated app restart, and
 authenticated account override. They also confirm that switching languages updates
