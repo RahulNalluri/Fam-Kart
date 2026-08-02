@@ -354,6 +354,10 @@ privacy-preserving household isolation and understandable validation messages.
 Backend workflow tests verify owner/member collaboration, household-scoped alias
 reuse, failed-update data integrity, and immediate access revocation after member
 removal across every alias operation.
+The mobile household-alias API client now validates authenticated CRUD requests and
+backend responses, converts the server's snake-case contract into mobile camel-case
+records, and rejects malformed household data before it reaches the local grocery
+dictionary. React Query hooks and alias-management screens remain later modules.
 
 Localization workflow tests now exercise the complete mobile precedence chain:
 device fallback, persisted manual selection, simulated app restart, and
