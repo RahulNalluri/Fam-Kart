@@ -351,6 +351,9 @@ members can manage these aliases through `POST` and `GET` at
 `/api/v1/households/{household_id}/grocery-aliases`, plus `PATCH` and `DELETE` at
 `/api/v1/households/{household_id}/grocery-aliases/{alias_id}`. API responses use
 privacy-preserving household isolation and understandable validation messages.
+Backend workflow tests verify owner/member collaboration, household-scoped alias
+reuse, failed-update data integrity, and immediate access revocation after member
+removal across every alias operation.
 
 Localization workflow tests now exercise the complete mobile precedence chain:
 device fallback, persisted manual selection, simulated app restart, and

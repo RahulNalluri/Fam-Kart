@@ -424,3 +424,231 @@ def test_empty_update_body_returns_standard_validation_error(
 
     assert response.status_code == 422
     assert response.json()["error"]["message"] == "Request validation failed."
+
+
+def test_complete_household_alias_collaboration_workflow(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    owner = create_user(db_session, email="alias-workflow-owner@example.com")
+    member = create_user(db_session, email="alias-workflow-member@example.com")
+    household = create_household(db_session, name="Alias Workflow Family")
+    add_membership(
+        db_session,
+        household=household,
+        user=owner,
+        role=HouseholdRole.OWNER,
+    )
+    add_membership(db_session, household=household, user=member)
+    collection_url = f"/api/v1/households/{household.id}/grocery-aliases"
+
+    created = client.post(
+        collection_url,
+        headers=authorization_header(owner),
+        json={"alias": "  Family   breakfast ", "canonical_key": "milk"},
+    )
+    assert created.status_code == 201
+    alias_id = created.json()["id"]
+    alias_url = f"{collection_url}/{alias_id}"
+
+    member_list = client.get(
+        collection_url,
+        headers=authorization_header(member),
+    )
+    assert member_list.status_code == 200
+    assert [entry["id"] for entry in member_list.json()] == [alias_id]
+
+    updated = client.patch(
+        alias_url,
+        headers=authorization_header(member),
+        json={"alias": "Weekend breakfast", "canonical_key": "egg"},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["alias"] == "Weekend breakfast"
+    assert updated.json()["canonical_key"] == "egg"
+    assert updated.json()["created_by_user_id"] == str(owner.id)
+
+    owner_list = client.get(
+        collection_url,
+        headers=authorization_header(owner),
+    )
+    assert owner_list.status_code == 200
+    assert owner_list.json()[0]["alias"] == "Weekend breakfast"
+    assert owner_list.json()[0]["canonical_key"] == "egg"
+
+    deleted = client.delete(
+        alias_url,
+        headers=authorization_header(owner),
+    )
+    assert deleted.status_code == 204
+    assert (
+        client.get(
+            collection_url,
+            headers=authorization_header(member),
+        ).json()
+        == []
+    )
+
+
+@pytest.mark.parametrize("action", ["create", "list", "update", "delete"])
+def test_removed_member_loses_all_alias_access_immediately(
+    client: TestClient,
+    db_session: Session,
+    action: str,
+) -> None:
+    owner = create_user(
+        db_session,
+        email=f"alias-revocation-owner-{action}@example.com",
+    )
+    former_member = create_user(
+        db_session,
+        email=f"alias-revocation-member-{action}@example.com",
+    )
+    household = create_household(db_session, name=f"Alias Revocation {action}")
+    add_membership(
+        db_session,
+        household=household,
+        user=owner,
+        role=HouseholdRole.OWNER,
+    )
+    add_membership(db_session, household=household, user=former_member)
+    grocery_alias = create_alias(
+        db_session,
+        household=household,
+        user=owner,
+        alias="Shared family rice",
+        canonical_key="rice",
+    )
+    collection_url = f"/api/v1/households/{household.id}/grocery-aliases"
+    alias_url = f"{collection_url}/{grocery_alias.id}"
+
+    removed = client.delete(
+        f"/api/v1/households/{household.id}/members/{former_member.id}",
+        headers=authorization_header(owner),
+    )
+    assert removed.status_code == 204
+
+    if action == "create":
+        response = client.post(
+            collection_url,
+            headers=authorization_header(former_member),
+            json={"alias": "Blocked family milk", "canonical_key": "milk"},
+        )
+    elif action == "list":
+        response = client.get(
+            collection_url,
+            headers=authorization_header(former_member),
+        )
+    elif action == "update":
+        response = client.patch(
+            alias_url,
+            headers=authorization_header(former_member),
+            json={"alias": "Blocked family rice"},
+        )
+    else:
+        response = client.delete(
+            alias_url,
+            headers=authorization_header(former_member),
+        )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["message"] == "Household not found."
+    db_session.expire_all()
+    stored_alias = db_session.get(HouseholdGroceryAlias, grocery_alias.id)
+    assert stored_alias is not None
+    assert stored_alias.alias == "Shared family rice"
+    assert db_session.query(HouseholdGroceryAlias).count() == 1
+
+
+@pytest.mark.parametrize(
+    ("update_payload", "status_code", "message"),
+    [
+        (
+            {"alias": "Existing family milk"},
+            409,
+            "This household already uses that grocery alias.",
+        ),
+        (
+            {"canonical_key": "dish_soap"},
+            422,
+            "Canonical grocery item is not supported.",
+        ),
+        (
+            {"alias": "milk", "canonical_key": "rice"},
+            409,
+            "That standard grocery term belongs to another item.",
+        ),
+    ],
+)
+def test_rejected_alias_update_preserves_stored_mapping(
+    client: TestClient,
+    db_session: Session,
+    update_payload: dict[str, str],
+    status_code: int,
+    message: str,
+) -> None:
+    member = create_user(
+        db_session,
+        email=f"alias-rejected-update-{uuid4()}@example.com",
+    )
+    household = create_household(db_session, name="Rejected Alias Update Family")
+    add_membership(db_session, household=household, user=member)
+    grocery_alias = create_alias(
+        db_session,
+        household=household,
+        user=member,
+        alias="Original family rice",
+        canonical_key="rice",
+    )
+    create_alias(
+        db_session,
+        household=household,
+        user=member,
+        alias="Existing family milk",
+        canonical_key="milk",
+    )
+    alias_url = f"/api/v1/households/{household.id}/grocery-aliases/{grocery_alias.id}"
+
+    response = client.patch(
+        alias_url,
+        headers=authorization_header(member),
+        json=update_payload,
+    )
+
+    assert response.status_code == status_code
+    assert response.json()["error"]["message"] == message
+    db_session.expire_all()
+    stored_alias = db_session.get(HouseholdGroceryAlias, grocery_alias.id)
+    assert stored_alias is not None
+    assert stored_alias.alias == "Original family rice"
+    assert stored_alias.normalized_alias == "original family rice"
+    assert stored_alias.canonical_key == "rice"
+
+
+def test_same_normalized_alias_can_be_used_by_separate_households(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    member = create_user(db_session, email="alias-household-scope@example.com")
+    first_household = create_household(db_session, name="First Scoped Alias Family")
+    second_household = create_household(db_session, name="Second Scoped Alias Family")
+    add_membership(db_session, household=first_household, user=member)
+    add_membership(db_session, household=second_household, user=member)
+    headers = authorization_header(member)
+
+    first_response = client.post(
+        f"/api/v1/households/{first_household.id}/grocery-aliases",
+        headers=headers,
+        json={"alias": "Morning milk", "canonical_key": "milk"},
+    )
+    second_response = client.post(
+        f"/api/v1/households/{second_household.id}/grocery-aliases",
+        headers=headers,
+        json={"alias": "  MORNING   MILK ", "canonical_key": "milk"},
+    )
+
+    assert first_response.status_code == 201
+    assert second_response.status_code == 201
+    assert first_response.json()["household_id"] == str(first_household.id)
+    assert second_response.json()["household_id"] == str(second_household.id)
+    assert first_response.json()["id"] != second_response.json()["id"]
