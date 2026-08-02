@@ -333,6 +333,14 @@ fallbacks, while blank aliases, unknown keys, cross-item duplicates, and attempt
 to remap standard terms are rejected. Server persistence and alias-management APIs
 remain a separate backend module.
 
+The backend household-alias database foundation stores the original display alias,
+its normalized collision key, and a canonical grocery key under one household.
+Database constraints prevent blank values and duplicate normalized aliases inside
+the same household while allowing another household to use the same phrase.
+Household deletion cascades to its aliases, and optional creator attribution is
+cleared rather than deleting shared aliases when an account is removed. Repository,
+authorization, and API behavior remain the next backend modules.
+
 Localization workflow tests now exercise the complete mobile precedence chain:
 device fallback, persisted manual selection, simulated app restart, and
 authenticated account override. They also confirm that switching languages updates

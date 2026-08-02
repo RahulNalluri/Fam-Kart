@@ -4,6 +4,7 @@ from app.db.base import Base
 from app.models import (
     AuthSession,
     Household,
+    HouseholdGroceryAlias,
     HouseholdInvitation,
     HouseholdMember,
     HouseholdRole,
@@ -17,6 +18,7 @@ def test_initial_model_tables_are_registered() -> None:
         "households",
         "household_members",
         "household_invitations",
+        "household_grocery_aliases",
         "auth_sessions",
     }.issubset(Base.metadata.tables)
 
@@ -104,6 +106,8 @@ def test_model_relationships_are_configured() -> None:
     assert isinstance(User.household_memberships.property, RelationshipProperty)
     assert isinstance(Household.members.property, RelationshipProperty)
     assert isinstance(Household.invitations.property, RelationshipProperty)
+    assert isinstance(Household.grocery_aliases.property, RelationshipProperty)
+    assert isinstance(HouseholdGroceryAlias.household.property, RelationshipProperty)
     assert isinstance(HouseholdMember.user.property, RelationshipProperty)
     assert isinstance(HouseholdMember.household.property, RelationshipProperty)
     assert isinstance(HouseholdInvitation.household.property, RelationshipProperty)
