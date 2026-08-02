@@ -358,6 +358,10 @@ The mobile household-alias API client now validates authenticated CRUD requests 
 backend responses, converts the server's snake-case contract into mobile camel-case
 records, and rejects malformed household data before it reaches the local grocery
 dictionary. React Query hooks and alias-management screens remain later modules.
+Mobile registration now reads the active English or Telugu selection, validates
+the account request and response, and sends that value to the backend as
+`preferred_language`. The future registration screen can compose this integration
+with the existing language selector without maintaining separate language state.
 
 Localization workflow tests now exercise the complete mobile precedence chain:
 device fallback, persisted manual selection, simulated app restart, and
