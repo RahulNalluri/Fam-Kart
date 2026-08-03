@@ -437,6 +437,15 @@ output validation and the model's lack of tools provide additional boundaries, b
 pattern detection is only one defense layer and must continue to be reviewed as
 attack techniques evolve.
 
+The AI parsing service now coordinates the complete extraction path. It applies the
+prompt security policy first, prefers a validated OpenRouter result, and falls back
+to the deterministic parser when OpenRouter is unconfigured, over its input limit,
+unreachable, returns an API failure, or supplies invalid structured data. Outcomes
+record whether `openrouter` or `rule_based` produced the items and retain only a
+safe fallback category for later observability. Household aliases are passed to the
+rule-based parser but are not yet included in external AI prompts. Security-policy
+rejections and unexpected implementation errors are never hidden by fallback.
+
 ## Quick Start
 
 PowerShell:
