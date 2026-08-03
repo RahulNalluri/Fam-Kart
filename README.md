@@ -397,16 +397,17 @@ OPENROUTER_API_KEY=sk-or-v1-your-key
 ```
 
 The API base URL must use HTTPS. The model, timeout, input/output limits, optional
-HTTP referer, and app title can be changed through environment variables. No
-OpenRouter network request is implemented in this configuration-only module.
+HTTP referer, and app title can be changed through environment variables. OpenRouter
+requests are made only by the backend provider through the application-scoped HTTPX
+client.
 
 The structured grocery extraction contracts define the validated boundary shared
-by future OpenRouter and rule-based parsers. Commands accept English or Telugu
+by the OpenRouter and rule-based parsers. Commands accept English or Telugu
 language context, while results contain one to 25 grocery items with an explicit
 name, optional canonical dictionary key, positive quantity, and normalized unit.
 Unknown fields, unsupported canonical values or units, and invalid quantities are
-rejected before extracted data can reach the grocery service. This module defines
-schemas only; parsing and OpenRouter requests remain separate Phase 8 work.
+rejected before extracted data can reach the grocery service. Both extraction paths
+must satisfy these contracts before the API returns a preview.
 
 The rule-based parser provides the first extraction implementation without using
 an external service. It recognizes the shared grocery dictionary, validated
@@ -414,8 +415,8 @@ household aliases supplied by the caller, common quantities from one to ten in
 English, Telugu, and transliterated Telugu, decimal numbers, and normalized grocery
 units. It supports multiple items and quantity placement before or after an item.
 Commands containing unknown grocery words or ambiguous quantities are rejected
-instead of returning a potentially incomplete shopping list. OpenRouter selection,
-API requests, and parser orchestration remain separate Phase 8 modules.
+instead of returning a potentially incomplete shopping list. The AI parsing service
+uses this parser automatically when OpenRouter cannot provide a usable result.
 
 The OpenRouter provider now performs backend-only structured grocery extraction
 through the Chat Completions API. It sends the Pydantic extraction JSON Schema in
@@ -424,8 +425,8 @@ applies configured input, output, and timeout limits, and validates every return
 item before use. HTTPX is injected so application lifecycle management and tests do
 not create hidden clients. Missing configuration, transport failures, API errors,
 rate limits, empty output, and malformed model data use controlled exceptions that
-never include the API key. Provider orchestration and rule-based fallback selection
-remain separate Phase 8 work.
+never include the API key. The AI parsing service converts expected provider
+failures into deterministic fallback reasons without hiding programming errors.
 
 The prompt and security policy separates immutable extraction instructions from a
 JSON-encoded user-data message before any OpenRouter request is made. Commands are
@@ -442,9 +443,10 @@ prompt security policy first, prefers a validated OpenRouter result, and falls b
 to the deterministic parser when OpenRouter is unconfigured, over its input limit,
 unreachable, returns an API failure, or supplies invalid structured data. Outcomes
 record whether `openrouter` or `rule_based` produced the items and retain only a
-safe fallback category for later observability. Household aliases are passed to the
-rule-based parser but are not yet included in external AI prompts. Security-policy
-rejections and unexpected implementation errors are never hidden by fallback.
+safe fallback category for later observability. Authorized household aliases are
+passed to both paths, while only aliases relevant to the current command enter the
+external AI prompt. Security-policy rejections and unexpected implementation errors
+are never hidden by fallback.
 
 Authenticated household members can now preview parsed grocery commands through
 `POST /api/v1/households/{household_id}/grocery-items/parse`. The endpoint verifies
@@ -461,6 +463,23 @@ Relevant aliases are sorted and encoded as untrusted JSON reference data; they m
 map existing command text to a canonical key but cannot introduce items. Unrelated
 household aliases remain inside the backend, while the full authorized mapping is
 still available to the deterministic parser if OpenRouter fallback is needed.
+
+AI parsing workflow tests now exercise the authenticated API through household
+alias isolation, secure OpenRouter prompt construction, strict structured-response
+validation, and the deterministic fallback. They also verify that prompt injection
+is rejected before an external request and that parsing remains a preview operation
+which does not create grocery-list rows. OpenRouter is simulated in these tests, so
+the suite requires neither internet access nor a real API key.
+
+### Phase 8 Validation
+
+Phase 8 backend validation covers configuration and secret redaction, strict
+extraction schemas, English, Telugu, and mixed-language rule parsing, OpenRouter
+request and response handling, prompt-injection defenses, household authorization
+and alias isolation, deterministic fallback, understandable API errors, and the
+complete authenticated parsing workflow. Parsing intentionally returns proposed
+items only; voice capture, mobile confirmation UI, and saving approved items belong
+to later phases.
 
 ## Quick Start
 
