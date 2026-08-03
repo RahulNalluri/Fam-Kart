@@ -315,8 +315,9 @@ as `preferred_language`, and for profile settings where users can change it late
 The selector is intentionally not mounted on the temporary welcome screen.
 Manual selections are stored locally with Expo SecureStore and restored before the
 application renders, preventing a flash in the device language. A valid account
-preference can then override the local selection after authentication. Saving
-profile updates to the backend remains later Phase 7 work.
+preference can then override the local selection after authentication. Mobile
+registration submits the selected language, and authenticated profile updates save
+the server-confirmed preference before switching the visible app language.
 
 The mobile grocery dictionary foundation defines canonical keys for common Indian
 household staples alongside English names, Telugu names, English plurals, Telugu
@@ -326,20 +327,18 @@ alias assigned to two different items. Fuzzy matching, quantities, units,
 and AI extraction remain separate later modules.
 
 Household grocery aliases now form a validated in-memory overlay on the standard
-mobile dictionary. Alias lists supplied by a future household API can map family
-nicknames, regional Telugu terms, or transliterations to existing canonical keys.
+mobile dictionary. Alias lists supplied by the authenticated household API can map
+family nicknames, regional Telugu terms, or transliterations to canonical keys.
 Each household builds an independent index; standard aliases remain available as
 fallbacks, while blank aliases, unknown keys, cross-item duplicates, and attempts
-to remap standard terms are rejected. Server persistence and alias-management APIs
-remain a separate backend module.
+to remap standard terms are rejected.
 
 The backend household-alias database foundation stores the original display alias,
 its normalized collision key, and a canonical grocery key under one household.
 Database constraints prevent blank values and duplicate normalized aliases inside
 the same household while allowing another household to use the same phrase.
 Household deletion cascades to its aliases, and optional creator attribution is
-cleared rather than deleting shared aliases when an account is removed. Repository,
-authorization, and API behavior remain the next backend modules.
+cleared rather than deleting shared aliases when an account is removed.
 
 The household-alias repository provides household-scoped create, list, lookup,
 update, and delete operations with rollback handling and database-race translation.
@@ -380,7 +379,7 @@ fallbacks, dictionary collision checks, and household alias isolation. It also
 corrected external language normalization so values such as `TE` are canonicalized
 to `te` before reaching i18next without weakening the TypeScript language guard.
 Registration and settings screens still need to mount these foundations, and
-household alias persistence still requires authenticated backend APIs.
+household alias management still needs React Query hooks and authenticated screens.
 
 ## Quick Start
 

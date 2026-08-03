@@ -8,7 +8,27 @@ import {
 
 describe("grocery dictionary", () => {
   it("provides English and Telugu names for the foundation items", () => {
-    expect(groceryDictionaryEntries.length).toBeGreaterThanOrEqual(15);
+    const expectedCanonicalKeys = [
+      "rice",
+      "milk",
+      "tomato",
+      "onion",
+      "potato",
+      "egg",
+      "curd",
+      "dal",
+      "salt",
+      "sugar",
+      "cooking_oil",
+      "wheat_flour",
+      "chilli",
+      "garlic",
+      "ginger",
+    ];
+    const canonicalKeys = groceryDictionaryEntries.map((entry) => entry.key);
+
+    expect(canonicalKeys).toHaveLength(expectedCanonicalKeys.length);
+    expect(new Set(canonicalKeys)).toEqual(new Set(expectedCanonicalKeys));
 
     for (const entry of groceryDictionaryEntries) {
       expect(entry.key).not.toHaveLength(0);
