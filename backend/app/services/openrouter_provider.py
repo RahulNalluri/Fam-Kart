@@ -145,7 +145,11 @@ class OpenRouterProvider:
             headers["HTTP-Referer"] = str(self._config.openrouter_http_referer)
         return headers
 
-    def _request_body(self, request: GroceryExtractionRequest) -> dict[str, object]:
+    def _request_body(
+        self,
+        request: GroceryExtractionRequest,
+        household_aliases: Mapping[str, str] | None,
+    ) -> dict[str, object]:
         if len(request.text) > self._config.ai_max_input_characters:
             raise OpenRouterInputTooLongError(
                 "The grocery command is too long for AI extraction.",
@@ -153,7 +157,12 @@ class OpenRouterProvider:
 
         return {
             "model": self._config.openrouter_model,
-            "messages": list(build_grocery_extraction_messages(request)),
+            "messages": list(
+                build_grocery_extraction_messages(
+                    request,
+                    household_aliases=household_aliases,
+                ),
+            ),
             "response_format": {
                 "type": "json_schema",
                 "json_schema": {
@@ -172,6 +181,8 @@ class OpenRouterProvider:
     async def extract(
         self,
         request: GroceryExtractionRequest,
+        *,
+        household_aliases: Mapping[str, str] | None = None,
     ) -> GroceryExtractionResult:
         base_url = str(self._config.openrouter_base_url).rstrip("/")
         endpoint = f"{base_url}/chat/completions"
@@ -179,7 +190,7 @@ class OpenRouterProvider:
             response = await self._client.post(
                 endpoint,
                 headers=self._headers(),
-                json=self._request_body(request),
+                json=self._request_body(request, household_aliases),
                 timeout=self._config.openrouter_timeout_seconds,
             )
         except httpx.TimeoutException as error:

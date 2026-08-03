@@ -47,13 +47,17 @@ class StubProvider:
     ) -> None:
         self.result = result or _result()
         self.error = error
-        self.requests: list[GroceryExtractionRequest] = []
+        self.requests: list[
+            tuple[GroceryExtractionRequest, Mapping[str, str] | None]
+        ] = []
 
     async def extract(
         self,
         request: GroceryExtractionRequest,
+        *,
+        household_aliases: Mapping[str, str] | None = None,
     ) -> GroceryExtractionResult:
-        self.requests.append(request)
+        self.requests.append((request, household_aliases))
         if self.error is not None:
             raise self.error
         return self.result
@@ -85,7 +89,7 @@ def test_service_returns_openrouter_result_without_calling_fallback() -> None:
     assert outcome.result.items[0].name == "OpenRouter rice"
     assert outcome.source is AIParsingSource.OPENROUTER
     assert outcome.fallback_reason is None
-    assert provider.requests == [request]
+    assert provider.requests == [(request, None)]
     assert fallback.calls == []
 
 
@@ -135,7 +139,7 @@ def test_service_uses_rule_based_fallback_for_expected_provider_failures(
     assert fallback.calls == [(request, None)]
 
 
-def test_service_passes_household_aliases_only_to_rule_based_fallback() -> None:
+def test_service_passes_household_aliases_to_provider_and_fallback() -> None:
     request = GroceryExtractionRequest(text="Maa paalu rendu packets")
     aliases = {"maa paalu": "milk"}
     provider = StubProvider(
@@ -150,6 +154,7 @@ def test_service_passes_household_aliases_only_to_rule_based_fallback() -> None:
     assert outcome.source is AIParsingSource.RULE_BASED
     assert outcome.result.items[0].canonical_key is CanonicalGroceryKey.MILK
     assert outcome.result.items[0].quantity == 2
+    assert provider.requests == [(request, aliases)]
 
 
 def test_service_applies_security_policy_before_any_parser() -> None:

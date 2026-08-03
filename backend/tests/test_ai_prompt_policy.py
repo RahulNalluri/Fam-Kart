@@ -5,8 +5,10 @@ import pytest
 
 from app.core.ai_prompt_policy import (
     GROCERY_EXTRACTION_SYSTEM_PROMPT,
+    HouseholdAliasPromptError,
     PromptInjectionDetectedError,
     build_grocery_extraction_messages,
+    prepare_household_aliases_for_prompt,
     validate_grocery_prompt_input,
 )
 from app.schemas.grocery_extraction import GroceryExtractionRequest
@@ -33,6 +35,7 @@ def test_prompt_builder_separates_instructions_from_untrusted_data() -> None:
         "data": {
             "text": "Rice 5 kg and milk 2 packets",
             "preferred_language": "te",
+            "household_aliases": [],
         },
     }
     assert request.text not in system_message["content"]
@@ -123,3 +126,70 @@ def test_policy_error_never_contains_rejected_command() -> None:
     assert command not in str(captured.value)
     assert command not in repr(captured.value)
     assert vars(captured.value) == {"reason_code": "prompt_extraction"}
+
+
+def test_prompt_includes_only_relevant_household_aliases_in_stable_order() -> None:
+    request = _request("Maa paalu and weekly rice add cheyyi", language="te")
+
+    _, user_message = build_grocery_extraction_messages(
+        request,
+        household_aliases={
+            "Weekly rice": "rice",
+            "Hidden potato": "potato",
+            "Maa paalu": "milk",
+        },
+    )
+
+    assert json.loads(user_message["content"])["data"]["household_aliases"] == [
+        {"alias": "Maa paalu", "canonical_key": "milk"},
+        {"alias": "Weekly rice", "canonical_key": "rice"},
+    ]
+
+
+def test_prompt_does_not_match_alias_inside_another_word() -> None:
+    aliases = prepare_household_aliases_for_prompt(
+        _request("Please add ricecake"),
+        {"rice": "rice"},
+    )
+
+    assert aliases == ()
+
+
+@pytest.mark.parametrize(
+    ("aliases", "reason_code"),
+    [
+        ({"rice": "milk"}, "standard_term_conflict"),
+        ({"Maa paalu": "bread"}, "invalid_canonical_key"),
+        ({"Maa paalu": "milk", " maa   paalu ": "milk"}, "duplicate_alias"),
+    ],
+)
+def test_prompt_rejects_invalid_relevant_alias_mapping(
+    aliases: dict[str, str],
+    reason_code: str,
+) -> None:
+    with pytest.raises(HouseholdAliasPromptError) as captured:
+        prepare_household_aliases_for_prompt(
+            _request("Rice and maa paalu"),
+            aliases,
+        )
+
+    assert captured.value.reason_code == reason_code
+
+
+def test_prompt_ignores_unrelated_invalid_alias_mapping() -> None:
+    records = prepare_household_aliases_for_prompt(
+        _request("Rice"),
+        {"Unrelated family term": "bread"},
+    )
+
+    assert records == ()
+
+
+def test_prompt_caps_number_of_relevant_aliases() -> None:
+    aliases = {f"family item {index}": "rice" for index in range(26)}
+    command = " and ".join(aliases)
+
+    with pytest.raises(HouseholdAliasPromptError) as captured:
+        prepare_household_aliases_for_prompt(_request(command), aliases)
+
+    assert captured.value.reason_code == "too_many_aliases"

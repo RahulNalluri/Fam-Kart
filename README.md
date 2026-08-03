@@ -454,6 +454,14 @@ the mobile confirmation flow must submit approved items through the existing ite
 creation endpoint. Outsiders receive the same household-not-found response, while
 unsafe or unrecognized commands receive understandable validation messages.
 
+Household aliases are now integrated into both extraction paths. The AI prompt
+receives only aliases whose text actually appears in the current command, capped at
+25 and validated against the shared canonical dictionary and standard-term owners.
+Relevant aliases are sorted and encoded as untrusted JSON reference data; they may
+map existing command text to a canonical key but cannot introduce items. Unrelated
+household aliases remain inside the backend, while the full authorized mapping is
+still available to the deterministic parser if OpenRouter fallback is needed.
+
 ## Quick Start
 
 PowerShell:

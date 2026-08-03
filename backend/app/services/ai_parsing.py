@@ -52,6 +52,8 @@ class GroceryExtractionProvider(Protocol):
     async def extract(
         self,
         request: GroceryExtractionRequest,
+        *,
+        household_aliases: Mapping[str, str] | None = None,
     ) -> GroceryExtractionResult: ...
 
 
@@ -82,7 +84,10 @@ class AIParsingService:
     ) -> AIParsingOutcome:
         validate_grocery_prompt_input(request)
         try:
-            result = await self._provider.extract(request)
+            result = await self._provider.extract(
+                request,
+                household_aliases=household_aliases,
+            )
         except OpenRouterNotConfiguredError:
             fallback_reason = AIParsingFallbackReason.NOT_CONFIGURED
         except OpenRouterInputTooLongError:

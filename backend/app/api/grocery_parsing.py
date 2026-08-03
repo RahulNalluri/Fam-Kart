@@ -6,7 +6,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user
-from app.core.ai_prompt_policy import PromptInjectionDetectedError
+from app.core.ai_prompt_policy import (
+    HouseholdAliasPromptError,
+    PromptInjectionDetectedError,
+)
 from app.core.config import settings
 from app.core.http import get_http_client
 from app.db.session import get_db
@@ -81,6 +84,11 @@ async def parse_household_grocery_command(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=("Please enter only grocery items without instructions for the AI."),
+        ) from error
+    except HouseholdAliasPromptError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Household grocery aliases could not be applied safely.",
         ) from error
     except NoRecognizedGroceryItemsError as error:
         raise HTTPException(

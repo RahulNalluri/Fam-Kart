@@ -8,7 +8,10 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.api.grocery_parsing import get_ai_parsing_service
-from app.core.ai_prompt_policy import PromptInjectionDetectedError
+from app.core.ai_prompt_policy import (
+    HouseholdAliasPromptError,
+    PromptInjectionDetectedError,
+)
 from app.core.security import create_access_token, hash_password
 from app.db.base import Base
 from app.db.session import get_db
@@ -311,6 +314,10 @@ def test_parsing_endpoint_requires_authentication(
         (
             PromptInjectionDetectedError(reason_code="instruction_override"),
             "Please enter only grocery items without instructions for the AI.",
+        ),
+        (
+            HouseholdAliasPromptError(reason_code="standard_term_conflict"),
+            "Household grocery aliases could not be applied safely.",
         ),
         (
             NoRecognizedGroceryItemsError(),

@@ -1,6 +1,6 @@
 import asyncio
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 
 import httpx
 import pytest
@@ -68,6 +68,7 @@ async def _extract(
     *,
     request: GroceryExtractionRequest | None = None,
     config: Settings | None = None,
+    household_aliases: Mapping[str, str] | None = None,
 ) -> GroceryExtractionResult:
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         provider = OpenRouterProvider(
@@ -76,6 +77,7 @@ async def _extract(
         )
         return await provider.extract(
             request or GroceryExtractionRequest(text="Rice 5 kg"),
+            household_aliases=household_aliases,
         )
 
 
@@ -142,6 +144,7 @@ def test_provider_builds_secure_multilingual_structured_request() -> None:
         "data": {
             "text": "పాలు రెండు ప్యాకెట్లు తీసుకురా",
             "preferred_language": "te",
+            "household_aliases": [],
         },
     }
     response_format = body["response_format"]
@@ -149,6 +152,32 @@ def test_provider_builds_secure_multilingual_structured_request() -> None:
     assert response_format["json_schema"]["strict"] is True
     assert response_format["json_schema"]["schema"]["additionalProperties"] is False
     assert result.items[0].canonical_key is CanonicalGroceryKey.MILK
+
+
+def test_provider_sends_only_relevant_household_aliases() -> None:
+    captured_body: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured_body.update(json.loads(request.content))
+        return _success_response()
+
+    asyncio.run(
+        _extract(
+            handler,
+            request=GroceryExtractionRequest(text="Maa paalu 2 packets"),
+            household_aliases={
+                "Maa paalu": "milk",
+                "Private rice": "rice",
+            },
+        ),
+    )
+
+    messages = captured_body["messages"]
+    assert isinstance(messages, list)
+    user_data = json.loads(messages[1]["content"])
+    assert user_data["data"]["household_aliases"] == [
+        {"alias": "Maa paalu", "canonical_key": "milk"},
+    ]
 
 
 def test_provider_requires_api_key_before_network_request() -> None:
