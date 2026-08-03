@@ -8,6 +8,13 @@ from app.schemas.auth import (
     TokenResponse,
     UserResponse,
 )
+from app.schemas.grocery_extraction import (
+    CanonicalGroceryKey,
+    ExtractedGroceryItem,
+    GroceryExtractionRequest,
+    GroceryExtractionResult,
+    GroceryUnit,
+)
 
 __all__ = [
     "LoginRequest",
@@ -16,4 +23,9 @@ __all__ = [
     "RegisterRequest",
     "TokenResponse",
     "UserResponse",
+    "CanonicalGroceryKey",
+    "ExtractedGroceryItem",
+    "GroceryExtractionRequest",
+    "GroceryExtractionResult",
+    "GroceryUnit",
 ]

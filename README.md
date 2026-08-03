@@ -400,6 +400,14 @@ The API base URL must use HTTPS. The model, timeout, input/output limits, option
 HTTP referer, and app title can be changed through environment variables. No
 OpenRouter network request is implemented in this configuration-only module.
 
+The structured grocery extraction contracts define the validated boundary shared
+by future OpenRouter and rule-based parsers. Commands accept English or Telugu
+language context, while results contain one to 25 grocery items with an explicit
+name, optional canonical dictionary key, positive quantity, and normalized unit.
+Unknown fields, unsupported canonical values or units, and invalid quantities are
+rejected before extracted data can reach the grocery service. This module defines
+schemas only; parsing and OpenRouter requests remain separate Phase 8 work.
+
 ## Quick Start
 
 PowerShell:
