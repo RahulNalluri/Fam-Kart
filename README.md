@@ -446,6 +446,14 @@ safe fallback category for later observability. Household aliases are passed to 
 rule-based parser but are not yet included in external AI prompts. Security-policy
 rejections and unexpected implementation errors are never hidden by fallback.
 
+Authenticated household members can now preview parsed grocery commands through
+`POST /api/v1/households/{household_id}/grocery-items/parse`. The endpoint verifies
+membership before loading household aliases, uses the application-scoped HTTPX
+client, and returns only validated proposed items. It does not write grocery rows;
+the mobile confirmation flow must submit approved items through the existing item
+creation endpoint. Outsiders receive the same household-not-found response, while
+unsafe or unrecognized commands receive understandable validation messages.
+
 ## Quick Start
 
 PowerShell:
