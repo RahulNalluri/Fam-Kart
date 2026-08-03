@@ -381,6 +381,25 @@ to `te` before reaching i18next without weakening the TypeScript language guard.
 Registration and settings screens still need to mount these foundations, and
 household alias management still needs React Query hooks and authenticated screens.
 
+### AI Configuration
+
+Phase 8 begins with backend-only OpenRouter settings. Development defaults use the
+`openrouter/free` router, a 30-second timeout, a 2,000-character command limit, and
+a 512-token response limit. `OPENROUTER_API_KEY` is optional so the application can
+start without AI access and later use the rule-based fallback. When configured, the
+key is loaded as a secret and must never be added to mobile code or committed.
+
+Copy `backend/.env.example` values into the ignored `backend/.env` file and set only
+your own key locally:
+
+```text
+OPENROUTER_API_KEY=sk-or-v1-your-key
+```
+
+The API base URL must use HTTPS. The model, timeout, input/output limits, optional
+HTTP referer, and app title can be changed through environment variables. No
+OpenRouter network request is implemented in this configuration-only module.
+
 ## Quick Start
 
 PowerShell:

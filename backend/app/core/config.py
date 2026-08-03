@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, RedisDsn, SecretStr
+from pydantic import Field, HttpUrl, RedisDsn, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Environment = Literal["development", "testing", "production"]
@@ -40,6 +40,15 @@ class Settings(BaseSettings):
         le=300,
     )
 
+    openrouter_api_key: SecretStr | None = None
+    openrouter_base_url: HttpUrl = HttpUrl("https://openrouter.ai/api/v1")
+    openrouter_model: str = Field(default="openrouter/free", max_length=200)
+    openrouter_timeout_seconds: float = Field(default=30, gt=0, le=120)
+    openrouter_max_output_tokens: int = Field(default=512, ge=64, le=4096)
+    ai_max_input_characters: int = Field(default=2000, ge=1, le=10000)
+    openrouter_http_referer: HttpUrl | None = None
+    openrouter_app_title: str = Field(default="FamilyKart AI", max_length=100)
+
     jwt_secret_key: SecretStr = Field(min_length=32)
     jwt_algorithm: JwtAlgorithm = "HS256"
     jwt_issuer: str = "familykart-api"
@@ -47,6 +56,38 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = Field(default=15, gt=0)
     refresh_token_expire_days: int = Field(default=30, gt=0)
     household_invitation_expire_hours: int = Field(default=24, gt=0, le=168)
+
+    @field_validator("openrouter_api_key", mode="before")
+    @classmethod
+    def normalize_optional_openrouter_key(cls, value: object) -> object:
+        if isinstance(value, str):
+            normalized = value.strip()
+            return normalized or None
+        return value
+
+    @field_validator("openrouter_http_referer", mode="before")
+    @classmethod
+    def normalize_optional_openrouter_referer(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @field_validator("openrouter_base_url")
+    @classmethod
+    def require_secure_openrouter_url(cls, value: HttpUrl) -> HttpUrl:
+        if value.scheme != "https":
+            raise ValueError("OpenRouter base URL must use HTTPS.")
+        if value.query is not None or value.fragment is not None:
+            raise ValueError("OpenRouter base URL cannot include a query or fragment.")
+        return value
+
+    @field_validator("openrouter_model", "openrouter_app_title")
+    @classmethod
+    def normalize_nonblank_openrouter_text(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("OpenRouter text settings cannot be blank.")
+        return normalized
 
 
 @lru_cache
