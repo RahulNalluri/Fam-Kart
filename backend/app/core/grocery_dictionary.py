@@ -5,7 +5,15 @@ from unicodedata import normalize as unicode_normalize
 STANDARD_GROCERY_TERMS_BY_KEY: Final[dict[str, tuple[str, ...]]] = {
     "rice": ("rice", "బియ్యం", "biyyam"),
     "milk": ("milk", "పాలు", "palu"),
-    "tomato": ("tomato", "tomatoes", "టమాటా", "టమాటాలు", "tamata", "tamatalu"),
+    "tomato": (
+        "tomato",
+        "tomatoes",
+        "tomatos",
+        "టమాటా",
+        "టమాటాలు",
+        "tamata",
+        "tamatalu",
+    ),
     "onion": (
         "onion",
         "onions",

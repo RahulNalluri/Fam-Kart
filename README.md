@@ -408,6 +408,15 @@ Unknown fields, unsupported canonical values or units, and invalid quantities ar
 rejected before extracted data can reach the grocery service. This module defines
 schemas only; parsing and OpenRouter requests remain separate Phase 8 work.
 
+The rule-based parser provides the first extraction implementation without using
+an external service. It recognizes the shared grocery dictionary, validated
+household aliases supplied by the caller, common quantities from one to ten in
+English, Telugu, and transliterated Telugu, decimal numbers, and normalized grocery
+units. It supports multiple items and quantity placement before or after an item.
+Commands containing unknown grocery words or ambiguous quantities are rejected
+instead of returning a potentially incomplete shopping list. OpenRouter selection,
+API requests, and parser orchestration remain separate Phase 8 modules.
+
 ## Quick Start
 
 PowerShell:
