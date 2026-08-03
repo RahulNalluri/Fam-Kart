@@ -16,7 +16,7 @@ export const registrationInputSchema = z.strictObject({
   preferredLanguage: z.enum(SUPPORTED_LANGUAGES),
 });
 
-const registeredUserApiSchema = z
+export const userProfileApiSchema = z
   .strictObject({
     id: z.uuid(),
     email: z.email(),
@@ -35,7 +35,8 @@ const registeredUserApiSchema = z
   }));
 
 export type RegistrationInput = z.infer<typeof registrationInputSchema>;
-export type RegisteredUser = z.infer<typeof registeredUserApiSchema>;
+export type UserProfile = z.infer<typeof userProfileApiSchema>;
+export type RegisteredUser = UserProfile;
 
 export async function registerAccount(
   input: RegistrationInput,
@@ -47,5 +48,5 @@ export async function registerAccount(
     password: data.password,
     preferred_language: data.preferredLanguage,
   });
-  return registeredUserApiSchema.parse(response.data);
+  return userProfileApiSchema.parse(response.data);
 }

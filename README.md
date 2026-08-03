@@ -362,6 +362,10 @@ Mobile registration now reads the active English or Telugu selection, validates
 the account request and response, and sends that value to the backend as
 `preferred_language`. The future registration screen can compose this integration
 with the existing language selector without maintaining separate language state.
+Authenticated profile language updates now persist the server-confirmed preference
+locally and switch i18next immediately. Backend rejection, malformed profile data,
+and local persistence failure leave the currently visible mobile language intact
+so a future profile screen can present a clear retry state.
 
 Localization workflow tests now exercise the complete mobile precedence chain:
 device fallback, persisted manual selection, simulated app restart, and
