@@ -417,6 +417,16 @@ Commands containing unknown grocery words or ambiguous quantities are rejected
 instead of returning a potentially incomplete shopping list. OpenRouter selection,
 API requests, and parser orchestration remain separate Phase 8 modules.
 
+The OpenRouter provider now performs backend-only structured grocery extraction
+through the Chat Completions API. It sends the Pydantic extraction JSON Schema in
+strict mode, requires a provider endpoint that supports the requested parameters,
+applies configured input, output, and timeout limits, and validates every returned
+item before use. HTTPX is injected so application lifecycle management and tests do
+not create hidden clients. Missing configuration, transport failures, API errors,
+rate limits, empty output, and malformed model data use controlled exceptions that
+never include the API key. Provider orchestration and rule-based fallback selection
+remain separate Phase 8 work.
+
 ## Quick Start
 
 PowerShell:
