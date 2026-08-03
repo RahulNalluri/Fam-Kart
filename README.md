@@ -427,6 +427,16 @@ rate limits, empty output, and malformed model data use controlled exceptions th
 never include the API key. Provider orchestration and rule-based fallback selection
 remain separate Phase 8 work.
 
+The prompt and security policy separates immutable extraction instructions from a
+JSON-encoded user-data message before any OpenRouter request is made. Commands are
+normalized for detection and blocked for high-confidence instruction overrides,
+role spoofing, model control tokens, safety bypasses, prompt or secret extraction,
+character-spacing evasions, encoded attacks, and unsafe control characters. Policy
+exceptions contain only a stable reason code, never the rejected command. Structured
+output validation and the model's lack of tools provide additional boundaries, but
+pattern detection is only one defense layer and must continue to be reviewed as
+attack techniques evolve.
+
 ## Quick Start
 
 PowerShell:
