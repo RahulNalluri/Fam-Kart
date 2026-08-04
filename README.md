@@ -504,7 +504,20 @@ transcript before any text can continue to grocery parsing.
 
 Controlled unavailable and invalid-response errors contain no audio content. This
 module defines the contract only: no real speech provider, audio upload endpoint,
-transcript simulation, recording storage, or transcription fallback is implemented.
+recording storage, or transcription fallback is implemented.
+
+### Transcript Simulation
+
+The backend includes a deterministic simulated speech provider for development and
+automated tests. It implements the same asynchronous contract as a real provider,
+discards the supplied audio reference without reading or retaining its bytes, and
+returns a preconfigured `SpeechTranscript` that has already passed language, length,
+and text validation.
+
+Simulation is disabled by default through `TRANSCRIPT_SIMULATION_ENABLED=false` and
+application settings reject any attempt to enable it in production. No API endpoint
+or mobile control exposes simulation yet, and the simulator does not replace future
+audio validation or a real transcription provider.
 
 ## Quick Start
 

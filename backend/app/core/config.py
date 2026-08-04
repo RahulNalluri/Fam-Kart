@@ -1,7 +1,14 @@
 from functools import lru_cache
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import Field, HttpUrl, RedisDsn, SecretStr, field_validator
+from pydantic import (
+    Field,
+    HttpUrl,
+    RedisDsn,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Environment = Literal["development", "testing", "production"]
@@ -48,6 +55,7 @@ class Settings(BaseSettings):
     ai_max_input_characters: int = Field(default=2000, ge=1, le=10000)
     openrouter_http_referer: HttpUrl | None = None
     openrouter_app_title: str = Field(default="FamilyKart AI", max_length=100)
+    transcript_simulation_enabled: bool = False
 
     jwt_secret_key: SecretStr = Field(min_length=32)
     jwt_algorithm: JwtAlgorithm = "HS256"
@@ -88,6 +96,12 @@ class Settings(BaseSettings):
         if not normalized:
             raise ValueError("OpenRouter text settings cannot be blank.")
         return normalized
+
+    @model_validator(mode="after")
+    def prevent_production_transcript_simulation(self) -> Self:
+        if self.environment == "production" and self.transcript_simulation_enabled:
+            raise ValueError("Transcript simulation cannot be enabled in production.")
+        return self
 
 
 @lru_cache
