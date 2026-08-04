@@ -494,6 +494,18 @@ Voice recordings are limited to 30 seconds and 5 MB, and background recording is
 disabled. These shared mobile requirements prepare later recording and upload
 modules; this foundation does not record, retain, upload, or transcribe audio.
 
+### Speech Provider Abstraction
+
+Speech transcription is defined behind a backend-only asynchronous provider
+contract so mobile code never contains speech-service credentials. Providers receive
+an immutable, previously validated audio input with its media type, safe file name,
+and English or Telugu language hint. They must return a normalized, validated
+transcript before any text can continue to grocery parsing.
+
+Controlled unavailable and invalid-response errors contain no audio content. This
+module defines the contract only: no real speech provider, audio upload endpoint,
+transcript simulation, recording storage, or transcription fallback is implemented.
+
 ## Quick Start
 
 PowerShell:
