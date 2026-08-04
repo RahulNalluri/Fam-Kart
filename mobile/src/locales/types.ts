@@ -24,4 +24,14 @@ export type TranslationResources = {
     serviceUnavailable: string;
     connectionInterrupted: string;
   };
+  voice: {
+    permission: {
+      title: string;
+      rationale: string;
+      request: string;
+      denied: string;
+      blocked: string;
+      openSettings: string;
+    };
+  };
 };

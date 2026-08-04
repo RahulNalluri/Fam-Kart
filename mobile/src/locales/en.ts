@@ -26,4 +26,16 @@ export const englishTranslations = {
     serviceUnavailable: "Real-time updates are temporarily unavailable. Reconnecting.",
     connectionInterrupted: "The real-time connection was interrupted. Reconnecting.",
   },
+  voice: {
+    permission: {
+      title: "Microphone permission",
+      rationale:
+        "FamilyKart AI needs microphone access to add grocery items using your voice.",
+      request: "Allow microphone",
+      denied: "Allow microphone access to use voice input.",
+      blocked:
+        "Microphone access is blocked. Allow it from your phone settings to use voice input.",
+      openSettings: "Open settings",
+    },
+  },
 } satisfies TranslationResources;

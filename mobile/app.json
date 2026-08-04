@@ -7,7 +7,18 @@
     "scheme": "familykart",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
-    "plugins": ["expo-router", "expo-localization", "expo-secure-store"],
+    "plugins": [
+      "expo-router",
+      "expo-localization",
+      "expo-secure-store",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Allow FamilyKart AI to use your microphone to add grocery items by voice.",
+          "recordAudioAndroid": true
+        }
+      ]
+    ],
     "experiments": {
       "typedRoutes": true
     }

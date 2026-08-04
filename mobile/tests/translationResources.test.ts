@@ -43,6 +43,7 @@ describe("translation resources", () => {
     expect(i18n.t("realtime.authenticationRequired")).toBe(
       "Your session has expired. Please sign in again.",
     );
+    expect(i18n.t("voice.permission.title")).toBe("Microphone permission");
   });
 
   it("returns Telugu application text", () => {
@@ -55,6 +56,7 @@ describe("translation resources", () => {
     expect(i18n.t("realtime.connectionInterrupted")).toBe(
       "తక్షణ కనెక్షన్‌కు అంతరాయం ఏర్పడింది. మళ్లీ కనెక్ట్ అవుతోంది.",
     );
+    expect(i18n.t("voice.permission.title")).toBe("మైక్రోఫోన్ అనుమతి");
   });
 
   it("falls back to English for an unsupported language", async () => {

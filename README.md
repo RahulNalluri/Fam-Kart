@@ -481,6 +481,19 @@ complete authenticated parsing workflow. Parsing intentionally returns proposed
 items only; voice capture, mobile confirmation UI, and saving approved items belong
 to later phases.
 
+### Voice Input Requirements and Permissions
+
+Phase 9 begins with an Expo Audio permission boundary. The native app declares
+foreground microphone access with a purpose-specific explanation, while the mobile
+permission service exposes `granted`, `requestable`, and `blocked` states without
+coupling native APIs to a screen. Permission should be requested only after a user
+starts a voice action; a blocked permission must direct the user to system settings
+instead of repeatedly opening the native prompt.
+
+Voice recordings are limited to 30 seconds and 5 MB, and background recording is
+disabled. These shared mobile requirements prepare later recording and upload
+modules; this foundation does not record, retain, upload, or transcribe audio.
+
 ## Quick Start
 
 PowerShell:
