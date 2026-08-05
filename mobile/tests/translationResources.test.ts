@@ -45,6 +45,7 @@ describe("translation resources", () => {
     );
     expect(i18n.t("voice.permission.title")).toBe("Microphone permission");
     expect(i18n.t("voice.recorder.ready")).toBe("Recording ready");
+    expect(i18n.t("voice.confirmation.title")).toBe("Review voice items");
   });
 
   it("returns Telugu application text", () => {
@@ -59,6 +60,7 @@ describe("translation resources", () => {
     );
     expect(i18n.t("voice.permission.title")).toBe("మైక్రోఫోన్ అనుమతి");
     expect(i18n.t("voice.recorder.ready")).toBe("రికార్డింగ్ సిద్ధంగా ఉంది");
+    expect(i18n.t("voice.confirmation.title")).toBe("వాయిస్ సరుకులను తనిఖీ చేయండి");
   });
 
   it("falls back to English for an unsupported language", async () => {

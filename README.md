@@ -573,6 +573,20 @@ source and fallback metadata remain available for a later confirmation response.
 adapter stores no transcript and creates no grocery items. Audio orchestration, an
 HTTP endpoint, mobile confirmation, and explicit item saving remain separate work.
 
+### Voice Confirmation Screen
+
+The mobile app now has a reusable English and Telugu review screen for parsed voice
+commands. It displays the transcript and extracted grocery items, lets the user edit
+names and quantities, select or clear units, remove incorrect items, cancel, or record
+again. Validation mirrors backend limits for names, positive quantities, decimal
+precision, and units that require quantities. Editing a name clears the AI's previous
+canonical classification so a stale item identity cannot be submitted accidentally.
+
+Adding items requires an explicit enabled confirmation action. Submission and errors
+remain controlled by the parent workflow, so this screen cannot save anything by
+itself. It is not mounted in Expo Router yet because a later authenticated upload API
+and navigation-state module must provide real household transcript data.
+
 ## Quick Start
 
 PowerShell:
