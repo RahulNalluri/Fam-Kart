@@ -56,6 +56,11 @@ class Settings(BaseSettings):
     openrouter_http_referer: HttpUrl | None = None
     openrouter_app_title: str = Field(default="FamilyKart AI", max_length=100)
     transcript_simulation_enabled: bool = False
+    audio_upload_max_bytes: int = Field(
+        default=5 * 1024 * 1024,
+        ge=1024,
+        le=10 * 1024 * 1024,
+    )
 
     jwt_secret_key: SecretStr = Field(min_length=32)
     jwt_algorithm: JwtAlgorithm = "HS256"

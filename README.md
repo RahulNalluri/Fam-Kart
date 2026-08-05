@@ -533,6 +533,19 @@ the audio session is released after every terminal path. The component is not mo
 in the temporary home screen yet because final grocery-screen UI and confirmation
 flow belong to later modules. No audio is uploaded or transcribed in this module.
 
+### Audio Upload Security
+
+The backend now has a secure ingestion boundary for future voice uploads. Audio is
+read in 64 KiB chunks, rejected above a configurable 5 MB limit, and accepted only
+when its declared media type matches a supported M4A, WebM, or WAV file signature.
+Empty files, unknown formats, and disguised non-audio content are rejected with
+controlled errors that do not include private audio bytes.
+
+Client-provided filenames are never trusted. Valid uploads receive a generated safe
+name and normalized media type before entering the speech-provider contract, and the
+temporary upload is closed on both success and failure. This module does not expose
+an upload endpoint, retain recordings, decode audio, or call a transcription service.
+
 ## Quick Start
 
 PowerShell:
