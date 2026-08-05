@@ -599,6 +599,34 @@ preventing untranslated or sensitive server details from appearing in the app.
 Automated checks enforce matching translation keys, interpolation variables, plural
 forms, and live language switching across the voice workflow.
 
+### Voice Workflow Tests
+
+Cross-module backend tests now run validated M4A input through simulated speech
+transcription, transcript conversion, secure grocery parsing, and the deterministic
+rule-based fallback. The suite covers English, Telugu, Telugu-English mixed commands,
+multiple items, quantities, units, and household grocery aliases.
+
+Failure-path tests prove that invalid audio never reaches transcription, speech
+provider failures never reach grocery parsing, and unsafe transcripts never reach an
+extraction provider. Successful results remain confirmation candidates only; these
+tests do not create database grocery items or call external AI or speech services.
+
+### Phase 9 Validation
+
+Phase 9 voice-input foundations are validated end to end at their current boundaries:
+microphone requirements and permissions, recording lifecycle, bounded audio
+validation, speech-provider abstraction, development-only transcript simulation,
+transcription orchestration, secure grocery parsing, confirmation controls, and
+English/Telugu localization. Backend formatting, linting, typing, unit tests, Redis
+integration tests, the backend Docker image build, mobile linting, TypeScript, Jest,
+Expo configuration, and Expo SDK 54 dependency compatibility all pass.
+
+The validated foundation does not yet expose an authenticated audio-upload endpoint,
+select a production speech provider, mount voice screens in navigation, or save
+confirmed items. Those integrations require real account, household, and navigation
+state and must retain the explicit confirmation boundary. Physical-device microphone
+testing remains pending until that route-level workflow exists.
+
 ## Quick Start
 
 PowerShell:
