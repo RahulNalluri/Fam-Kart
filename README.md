@@ -587,6 +587,18 @@ remain controlled by the parent workflow, so this screen cannot save anything by
 itself. It is not mounted in Expo Router yet because a later authenticated upload API
 and navigation-state module must provide real household transcript data.
 
+### English and Telugu Voice Localization
+
+The complete mobile voice interface now changes between English and Telugu at
+runtime, including microphone permissions, recorder states, confirmation controls,
+validation, units, accessibility labels, and controlled submission failures. Family
+transcripts and grocery names remain exactly as spoken instead of being translated.
+
+Voice submission failures use known error codes rather than arbitrary backend text,
+preventing untranslated or sensitive server details from appearing in the app.
+Automated checks enforce matching translation keys, interpolation variables, plural
+forms, and live language switching across the voice workflow.
+
 ## Quick Start
 
 PowerShell:

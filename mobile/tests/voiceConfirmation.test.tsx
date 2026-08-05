@@ -2,7 +2,10 @@ import { fireEvent, render, screen } from "@testing-library/react-native";
 import { I18nextProvider } from "react-i18next";
 
 import { VoiceConfirmationScreen } from "../src/components/VoiceConfirmationScreen";
-import { VoiceConfirmationItem } from "../src/features/voice/confirmation";
+import {
+  VoiceConfirmationItem,
+  VoiceConfirmationSubmitErrorCode,
+} from "../src/features/voice/confirmation";
 import { SupportedLanguage } from "../src/locales/config";
 import { createAppI18n } from "../src/locales/i18n";
 
@@ -30,12 +33,12 @@ function renderScreen({
   language = "en",
   items = [milkItem, riceItem],
   isSubmitting = false,
-  submitError = null,
+  submitErrorCode = null,
 }: {
   language?: SupportedLanguage;
   items?: readonly VoiceConfirmationItem[];
   isSubmitting?: boolean;
-  submitError?: string | null;
+  submitErrorCode?: VoiceConfirmationSubmitErrorCode | null;
 } = {}) {
   const onConfirm = jest.fn();
   const onCancel = jest.fn();
@@ -48,7 +51,7 @@ function renderScreen({
         onCancel={onCancel}
         onConfirm={onConfirm}
         onRecordAgain={onRecordAgain}
-        submitError={submitError}
+        submitErrorCode={submitErrorCode}
         transcript="Palu rendu packets and rice five kg"
       />
     </I18nextProvider>,
@@ -141,11 +144,13 @@ describe("VoiceConfirmationScreen", () => {
     const { onConfirm } = renderScreen({
       items: [milkItem],
       isSubmitting: true,
-      submitError: "Items could not be added.",
+      submitErrorCode: "save_failed",
     });
 
     expect(
-      screen.getByRole("alert", { name: "Items could not be added." }),
+      screen.getByRole("alert", {
+        name: "The grocery items could not be added. Please try again.",
+      }),
     ).toBeTruthy();
     const submitButton = screen.getByRole("button", { name: "Adding items..." });
     expect(submitButton.props.accessibilityState).toEqual({

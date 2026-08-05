@@ -19,6 +19,26 @@ function collectTranslationValues(value: Record<string, unknown>): string[] {
   );
 }
 
+function collectTranslationEntries(
+  value: Record<string, unknown>,
+  prefix = "",
+): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([key, child]) => {
+      const path = prefix ? `${prefix}.${key}` : key;
+      return typeof child === "string"
+        ? [[path, child]]
+        : Object.entries(
+            collectTranslationEntries(child as Record<string, unknown>, path),
+          );
+    }),
+  );
+}
+
+function interpolationVariables(value: string): string[] {
+  return [...value.matchAll(/{{\s*([^},\s]+)[^}]*}}/g)].map((match) => match[1]).sort();
+}
+
 describe("translation resources", () => {
   it("provides matching English and Telugu translation keys", () => {
     expect(collectTranslationKeys(teluguTranslations).sort()).toEqual(
@@ -33,6 +53,29 @@ describe("translation resources", () => {
     expect(collectTranslationValues(translations).every((value) => value.trim())).toBe(
       true,
     );
+  });
+
+  it("uses matching interpolation variables in English and Telugu", () => {
+    const englishEntries = collectTranslationEntries(englishTranslations);
+    const teluguEntries = collectTranslationEntries(teluguTranslations);
+
+    for (const [key, englishValue] of Object.entries(englishEntries)) {
+      expect(interpolationVariables(teluguEntries[key])).toEqual(
+        interpolationVariables(englishValue),
+      );
+    }
+  });
+
+  it.each([
+    ["English", englishTranslations],
+    ["Telugu", teluguTranslations],
+  ])("provides one and other forms for every %s plural", (_language, translations) => {
+    const keys = collectTranslationKeys(translations);
+    const keySet = new Set(keys);
+
+    for (const key of keys.filter((candidate) => candidate.endsWith("_one"))) {
+      expect(keySet.has(key.replace(/_one$/, "_other"))).toBe(true);
+    }
   });
 
   it("returns English application text", () => {

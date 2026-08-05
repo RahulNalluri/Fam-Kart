@@ -20,13 +20,14 @@ import {
   normalizeVoiceConfirmationItem,
   validateVoiceConfirmationItem,
   VoiceConfirmationItem,
+  VoiceConfirmationSubmitErrorCode,
 } from "../features/voice/confirmation";
 
 export type VoiceConfirmationScreenProps = {
   transcript: string;
   initialItems: readonly VoiceConfirmationItem[];
   isSubmitting?: boolean;
-  submitError?: string | null;
+  submitErrorCode?: VoiceConfirmationSubmitErrorCode | null;
   onConfirm: (items: readonly VoiceConfirmationItem[]) => void;
   onCancel: () => void;
   onRecordAgain: () => void;
@@ -48,11 +49,18 @@ const unitTranslationKeys = {
   jar: "voice.confirmation.units.jar",
 } as const satisfies Record<GroceryUnit, string>;
 
+const submitErrorTranslationKeys = {
+  household_unavailable: "voice.confirmation.errors.householdUnavailable",
+  network_unavailable: "voice.confirmation.errors.networkUnavailable",
+  save_failed: "voice.confirmation.errors.saveFailed",
+  session_expired: "voice.confirmation.errors.sessionExpired",
+} as const satisfies Record<VoiceConfirmationSubmitErrorCode, string>;
+
 export function VoiceConfirmationScreen({
   transcript,
   initialItems,
   isSubmitting = false,
-  submitError = null,
+  submitErrorCode = null,
   onConfirm,
   onCancel,
   onRecordAgain,
@@ -241,9 +249,9 @@ export function VoiceConfirmationScreen({
         })}
       </ScrollView>
 
-      {submitError ? (
+      {submitErrorCode ? (
         <Text accessibilityRole="alert" style={styles.submitError}>
-          {submitError}
+          {t(submitErrorTranslationKeys[submitErrorCode])}
         </Text>
       ) : null}
 

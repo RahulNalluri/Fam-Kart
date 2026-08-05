@@ -76,6 +76,12 @@ export type TranslationResources = {
       confirm_one: string;
       confirm_other: string;
       submitting: string;
+      errors: {
+        networkUnavailable: string;
+        sessionExpired: string;
+        householdUnavailable: string;
+        saveFailed: string;
+      };
       units: {
         kg: string;
         g: string;

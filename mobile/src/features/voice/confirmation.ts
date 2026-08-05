@@ -16,6 +16,9 @@ export const GROCERY_UNITS = [
 
 export type GroceryUnit = (typeof GROCERY_UNITS)[number];
 
+export type VoiceConfirmationSubmitErrorCode =
+  "network_unavailable" | "session_expired" | "household_unavailable" | "save_failed";
+
 export type VoiceConfirmationItem = Readonly<{
   id: string;
   name: string;

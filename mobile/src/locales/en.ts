@@ -80,6 +80,13 @@ export const englishTranslations = {
       confirm_one: "Add {{count}} item to list",
       confirm_other: "Add {{count}} items to list",
       submitting: "Adding items...",
+      errors: {
+        networkUnavailable:
+          "Could not connect. Check your internet connection and try again.",
+        sessionExpired: "Your session has expired. Please sign in again.",
+        householdUnavailable: "This household is no longer available to your account.",
+        saveFailed: "The grocery items could not be added. Please try again.",
+      },
       units: {
         kg: "Kilograms",
         g: "Grams",
