@@ -546,6 +546,20 @@ name and normalized media type before entering the speech-provider contract, and
 temporary upload is closed on both success and failure. This module does not expose
 an upload endpoint, retain recordings, decode audio, or call a transcription service.
 
+### Voice Transcription Integration
+
+The backend voice-transcription service now joins secure audio validation to the
+speech-provider contract. Unsupported or unsafe uploads stop before provider access;
+validated audio reaches the provider with a normalized media type, generated safe
+filename, and English or Telugu language hint. Provider output is validated again as
+a `SpeechTranscript` before it can move further through the application.
+
+Known provider errors remain controlled, while malformed responses and unexpected
+provider exceptions are converted to safe errors without exposing audio or provider
+details. The integration service does not persist audio or transcripts. A public
+upload endpoint, production speech provider, grocery parsing, confirmation, and item
+creation remain outside this module.
+
 ## Quick Start
 
 PowerShell:
