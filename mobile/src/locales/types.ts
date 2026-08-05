@@ -33,5 +33,20 @@ export type TranslationResources = {
       blocked: string;
       openSettings: string;
     };
+    recorder: {
+      title: string;
+      idle: string;
+      requestingPermission: string;
+      preparing: string;
+      recording: string;
+      stopping: string;
+      ready: string;
+      failed: string;
+      start: string;
+      stop: string;
+      cancel: string;
+      recordAgain: string;
+      durationAccessibility: string;
+    };
   };
 };

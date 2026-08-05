@@ -519,6 +519,20 @@ application settings reject any attempt to enable it in production. No API endpo
 or mobile control exposes simulation yet, and the simulator does not replace future
 audio validation or a real transcription provider.
 
+### Mobile Recording Interface
+
+The mobile voice recorder is implemented as a reusable localized component backed
+by a platform-neutral lifecycle hook and a thin Expo Audio adapter. Microphone access
+is requested only after the user starts recording. The controller prepares the audio
+session, applies the 30-second native limit, exposes elapsed time, and returns only a
+local URI and bounded duration after a successful stop.
+
+Users can stop, cancel, retry, or open system settings after a blocked permission.
+Recordings are discarded when cancelled or when the app leaves the foreground, and
+the audio session is released after every terminal path. The component is not mounted
+in the temporary home screen yet because final grocery-screen UI and confirmation
+flow belong to later modules. No audio is uploaded or transcribed in this module.
+
 ## Quick Start
 
 PowerShell:
