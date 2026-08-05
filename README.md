@@ -560,6 +560,19 @@ details. The integration service does not persist audio or transcripts. A public
 upload endpoint, production speech provider, grocery parsing, confirmation, and item
 creation remain outside this module.
 
+### Transcript-to-Grocery Parsing
+
+Validated English, Telugu, and Telugu-English mixed transcripts can now enter the
+same grocery extraction pipeline used by typed commands. The adapter converts the
+transcript into a `GroceryExtractionRequest`, uses the speech provider's detected
+language, and forwards the caller's already-authorized household aliases to the
+existing AI parser and rule-based fallback.
+
+The existing prompt security policy still runs before grocery extraction, and parser
+source and fallback metadata remain available for a later confirmation response. The
+adapter stores no transcript and creates no grocery items. Audio orchestration, an
+HTTP endpoint, mobile confirmation, and explicit item saving remain separate work.
+
 ## Quick Start
 
 PowerShell:
