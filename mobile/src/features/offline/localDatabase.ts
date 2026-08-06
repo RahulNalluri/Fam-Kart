@@ -1,4 +1,4 @@
-import { openDatabaseAsync } from "expo-sqlite";
+import { openDatabaseAsync, SQLiteBindParams } from "expo-sqlite";
 
 import {
   CURRENT_LOCAL_DATABASE_VERSION,
@@ -10,11 +10,14 @@ export const LOCAL_DATABASE_VERSION = CURRENT_LOCAL_DATABASE_VERSION;
 
 type LocalDatabaseTransaction = Readonly<{
   execAsync(source: string): Promise<void>;
+  runAsync(source: string, params: SQLiteBindParams): Promise<unknown>;
 }>;
 
 export type LocalDatabaseConnection = Readonly<{
   execAsync(source: string): Promise<void>;
-  getFirstAsync<T>(source: string): Promise<T | null>;
+  runAsync(source: string, params: SQLiteBindParams): Promise<unknown>;
+  getFirstAsync<T>(source: string, params?: SQLiteBindParams): Promise<T | null>;
+  getAllAsync<T>(source: string, params: SQLiteBindParams): Promise<T[]>;
   withExclusiveTransactionAsync(
     task: (transaction: LocalDatabaseTransaction) => Promise<void>,
   ): Promise<void>;

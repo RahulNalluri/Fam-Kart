@@ -685,6 +685,24 @@ This module defines storage and migration rules only. Repositories for reading a
 writing cached groceries, queue compaction and replay, connectivity detection, and
 conflict presentation are not implemented yet.
 
+### Local Grocery Cache Repository
+
+The mobile app now has a parameterized SQLite repository for server grocery
+snapshots. It atomically upserts one shopping session, removes that session's stale
+cached items, and inserts the latest item list with a shared synchronization time.
+Decimal quantities remain strings so values such as `5.000` are not changed by
+JavaScript floating-point conversion.
+
+Cached reads require household and shopping-session identifiers, return camel-case
+application records, and preserve the backend's pending-first ordering. Individual
+sessions or complete household caches can be removed without querying or deleting
+the independent pending-mutation table. Snapshot validation rejects an item assigned
+to a different session before opening a transaction.
+
+This repository stores authoritative snapshots only. Optimistic item overlays,
+pending-mutation repository operations, queue replay, and React Query integration
+remain separate Phase 10 modules.
+
 ## Quick Start
 
 PowerShell:

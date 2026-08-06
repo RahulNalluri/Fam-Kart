@@ -18,22 +18,32 @@ function buildDatabase(currentVersion: number | null): DatabaseHarness {
   const transactionExecAsync = jest
     .fn<Promise<void>, [string]>()
     .mockResolvedValue(undefined);
+  const runAsync = jest.fn().mockResolvedValue({ changes: 0, lastInsertRowId: 0 });
+  const transactionRunAsync = jest
+    .fn()
+    .mockResolvedValue({ changes: 0, lastInsertRowId: 0 });
   const withExclusiveTransactionAsync = jest.fn(
     async (
       task: (transaction: {
         execAsync(source: string): Promise<void>;
+        runAsync(source: string, params: unknown): Promise<unknown>;
       }) => Promise<void>,
     ) => {
-      await task({ execAsync: transactionExecAsync });
+      await task({
+        execAsync: transactionExecAsync,
+        runAsync: transactionRunAsync,
+      });
     },
   );
   const database: LocalDatabaseConnection = {
     execAsync,
+    runAsync,
     getFirstAsync: jest
       .fn()
       .mockResolvedValue(
         currentVersion === null ? null : { user_version: currentVersion },
       ),
+    getAllAsync: jest.fn().mockResolvedValue([]),
     withExclusiveTransactionAsync,
   };
 
