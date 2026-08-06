@@ -721,6 +721,25 @@ This module exposes hydration orchestration only. Mounting it in an authenticate
 grocery screen, persisting successful network responses, optimistic overlays, and
 background queue replay remain separate Phase 10 work.
 
+### Offline Mutation Queue
+
+Offline grocery changes can now be stored in the device's durable SQLite mutation
+queue using parameterized queries. Each entry retains its client mutation ID,
+household and session scope, target item, operation, JSON payload, base server
+timestamp, creation time, retry count, state, and safe failure code. Re-enqueuing the
+same mutation ID does not create a duplicate row.
+
+Pending entries are returned only for the requested household in creation-time and
+mutation-ID order, matching the agreed FIFO replay policy. Temporary failures
+increment the attempt count, conflicts move an entry to `requires_review`, and only
+an explicitly acknowledged entry is removed. Review entries are excluded from
+normal replay reads. Payload serialization failures and malformed stored JSON use
+controlled errors, while arbitrary server text cannot be stored as an error code.
+
+This module manages queue persistence and state only. Mutation compaction, network
+replay, backend idempotency/version enforcement, optimistic cache overlays, and
+user-facing conflict review remain separate Phase 10 work.
+
 ## Quick Start
 
 PowerShell:
