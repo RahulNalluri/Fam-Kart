@@ -7,6 +7,7 @@ export type CachedShoppingSession = Readonly<{
   status: "active" | "completed";
   createdAt: string;
   completedAt: string | null;
+  syncedAt: string;
 }>;
 
 export type CachedGroceryItem = Readonly<{
@@ -28,9 +29,19 @@ export type CachedGroceryItem = Readonly<{
 }>;
 
 export type GrocerySessionSnapshot = Readonly<{
-  session: CachedShoppingSession;
+  session: Omit<CachedShoppingSession, "syncedAt">;
   items: readonly Omit<CachedGroceryItem, "householdId" | "syncedAt">[];
   syncedAt: string;
+}>;
+
+type CachedShoppingSessionRow = Readonly<{
+  id: string;
+  household_id: string;
+  created_by_user_id: string | null;
+  status: "active" | "completed";
+  created_at: string;
+  completed_at: string | null;
+  synced_at: string;
 }>;
 
 type CachedGroceryItemRow = Readonly<{
@@ -104,6 +115,18 @@ function mapGroceryItem(row: CachedGroceryItemRow): CachedGroceryItem {
   };
 }
 
+function mapShoppingSession(row: CachedShoppingSessionRow): CachedShoppingSession {
+  return {
+    id: row.id,
+    householdId: row.household_id,
+    createdByUserId: row.created_by_user_id,
+    status: row.status,
+    createdAt: row.created_at,
+    completedAt: row.completed_at,
+    syncedAt: row.synced_at,
+  };
+}
+
 export class LocalGroceryCacheRepository {
   constructor(private readonly database: LocalDatabaseConnection) {}
 
@@ -164,6 +187,20 @@ export class LocalGroceryCacheRepository {
       { $householdId: householdId, $shoppingSessionId: shoppingSessionId },
     );
     return rows.map(mapGroceryItem);
+  }
+
+  async getSession(
+    householdId: string,
+    shoppingSessionId: string,
+  ): Promise<CachedShoppingSession | null> {
+    const row = await this.database.getFirstAsync<CachedShoppingSessionRow>(
+      `SELECT id, household_id, created_by_user_id, status,
+              created_at, completed_at, synced_at
+       FROM cached_shopping_sessions
+       WHERE id = $shoppingSessionId AND household_id = $householdId;`,
+      { $shoppingSessionId: shoppingSessionId, $householdId: householdId },
+    );
+    return row === null ? null : mapShoppingSession(row);
   }
 
   async getItem(

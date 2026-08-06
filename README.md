@@ -703,6 +703,24 @@ This repository stores authoritative snapshots only. Optimistic item overlays,
 pending-mutation repository operations, queue replay, and React Query integration
 remain separate Phase 10 modules.
 
+### React Query Cache Hydration
+
+Cached grocery snapshots can now hydrate the household/session item query before an
+online response is available. Hydration first verifies that the cached session
+exists, so a deliberately empty grocery list is distinguishable from a device that
+has never cached that session. SQLite's synchronization timestamp becomes React
+Query's data timestamp, allowing normal online query behavior to treat older local
+data as stale while still rendering it immediately.
+
+Hydration checks the query cache both before and after reading SQLite. Existing
+query data skips local reads, and an online response that arrives during the local
+read always wins instead of being overwritten by an older snapshot. Storage errors
+leave React Query unchanged, and query keys retain household/session isolation.
+
+This module exposes hydration orchestration only. Mounting it in an authenticated
+grocery screen, persisting successful network responses, optimistic overlays, and
+background queue replay remain separate Phase 10 work.
+
 ## Quick Start
 
 PowerShell:

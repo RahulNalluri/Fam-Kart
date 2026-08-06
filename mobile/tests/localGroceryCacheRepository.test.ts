@@ -179,6 +179,35 @@ describe("LocalGroceryCacheRepository", () => {
     });
   });
 
+  it("returns scoped session metadata for hydration", async () => {
+    const harness = buildHarness();
+    harness.getFirstAsync.mockResolvedValueOnce({
+      id: sessionId,
+      household_id: householdId,
+      created_by_user_id: "44444444-4444-4444-8444-444444444444",
+      status: "active",
+      created_at: "2026-08-07T07:55:00Z",
+      completed_at: null,
+      synced_at: syncedAt,
+    });
+
+    await expect(
+      harness.repository.getSession(householdId, sessionId),
+    ).resolves.toEqual({
+      id: sessionId,
+      householdId,
+      createdByUserId: "44444444-4444-4444-8444-444444444444",
+      status: "active",
+      createdAt: "2026-08-07T07:55:00Z",
+      completedAt: null,
+      syncedAt,
+    });
+    expect(harness.getFirstAsync.mock.calls[0][1]).toEqual({
+      $shoppingSessionId: sessionId,
+      $householdId: householdId,
+    });
+  });
+
   it("returns one scoped item and preserves its decimal quantity", async () => {
     const harness = buildHarness();
     harness.getFirstAsync.mockResolvedValueOnce(itemRow);
