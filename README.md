@@ -627,6 +627,30 @@ confirmed items. Those integrations require real account, household, and navigat
 state and must retain the explicit confirmation boundary. Physical-device microphone
 testing remains pending until that route-level workflow exists.
 
+### Offline Synchronization Requirements and Conflict Policy
+
+Phase 10 starts with a deterministic contract for grocery changes created while a
+device has no connection. The server remains the source of truth, while each local
+mutation must retain a unique client mutation ID, household and shopping-session
+scope, operation and payload, target item ID, base `updated_at` value, creation time,
+and retry count. Mutations are replayed in first-in-first-out order within a
+household and removed only after server acknowledgement; affected server queries are
+then refreshed.
+
+Network failures, timeouts, rate limits, and server failures remain queued for a
+later retry. Authentication failures pause replay until the session is refreshed.
+Missing or inaccessible household resources discard the affected stale work and
+refresh server state, validation failures are rejected, and version or duplicate
+conflicts require user review instead of silently overwriting another family
+member's work. A delete is considered successful when the item is already absent.
+
+The current backend exposes grocery `updated_at` timestamps but does not yet enforce
+version preconditions or accept idempotency keys. Those backend contracts must be
+implemented before a persistent mutation queue can safely replay writes. This module
+therefore defines and tests policy only; Expo SQLite storage, optimistic updates,
+queue processing, connectivity detection, and user-facing conflict screens are not
+implemented yet.
+
 ## Quick Start
 
 PowerShell:
