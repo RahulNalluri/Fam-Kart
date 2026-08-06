@@ -17,7 +17,8 @@
           "microphonePermission": "Allow FamilyKart AI to use your microphone to add grocery items by voice.",
           "recordAudioAndroid": true
         }
-      ]
+      ],
+      "expo-sqlite"
     ],
     "experiments": {
       "typedRoutes": true

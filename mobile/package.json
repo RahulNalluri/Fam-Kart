@@ -25,6 +25,7 @@
     "expo-localization": "~17.0.9",
     "expo-router": "~6.0.24",
     "expo-secure-store": "~15.0.8",
+    "expo-sqlite": "~16.0.10",
     "expo-status-bar": "~3.0.9",
     "i18next": "^26.3.6",
     "nativewind": "^4.1.23",

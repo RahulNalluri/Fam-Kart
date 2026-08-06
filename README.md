@@ -651,6 +651,21 @@ therefore defines and tests policy only; Expo SQLite storage, optimistic updates
 queue processing, connectivity detection, and user-facing conflict screens are not
 implemented yet.
 
+### Expo SQLite Foundation
+
+The mobile app now includes the Expo SDK 54-compatible `expo-sqlite` module and a
+single asynchronous entry point for opening `familykart.db`. Initialization enables
+SQLite foreign-key enforcement and write-ahead logging, reads SQLite's
+`user_version`, and applies the first schema migration inside an exclusive
+transaction. Failed initialization is never cached as a successful connection, so a
+later call can retry safely.
+
+The first schema contains only local database metadata and migration versioning. It
+does not copy PostgreSQL data or replace the backend: PostgreSQL remains the shared
+source of truth, while this SQLite database exists only on one mobile device. Cached
+grocery tables, pending mutations, replay processing, and conflict screens remain
+separate Phase 10 modules.
+
 ## Quick Start
 
 PowerShell:
