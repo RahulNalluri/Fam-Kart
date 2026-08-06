@@ -11,6 +11,11 @@ from app.models.grocery_activity_event import (
     GroceryActivityType,
 )
 from app.models.grocery_item import GroceryItem, GroceryItemStatus
+from app.models.grocery_mutation_idempotency import GroceryMutationIdempotency
+from app.repositories.grocery_mutation_idempotency import (
+    GroceryMutationIdempotencyContext,
+    GroceryMutationIdempotencyRepository,
+)
 
 PENDING_NAME_INDEX = "uq_grocery_items_session_pending_name"
 
@@ -40,9 +45,13 @@ class GroceryItemRepository:
         notes: str | None,
         created_by_user_id: UUID,
         assigned_to_user_id: UUID | None,
+        idempotency_context: GroceryMutationIdempotencyContext | None = None,
     ) -> GroceryItem:
         self._committed_activity_event = None
         try:
+            idempotency_record = self._begin_idempotent_mutation(
+                idempotency_context,
+            )
             if self.pending_name_exists(
                 shopping_session_id=shopping_session_id,
                 name=name,
@@ -67,6 +76,7 @@ class GroceryItemRepository:
                 actor_user_id=created_by_user_id,
                 event_type=GroceryActivityType.ITEM_ADDED,
             )
+            self._complete_idempotent_mutation(idempotency_record, item)
             self.db.commit()
         except IntegrityError as error:
             self.db.rollback()
@@ -132,9 +142,13 @@ class GroceryItemRepository:
         *,
         household_id: UUID,
         actor_user_id: UUID,
+        idempotency_context: GroceryMutationIdempotencyContext | None = None,
     ) -> GroceryItem:
         self._committed_activity_event = None
         try:
+            idempotency_record = self._begin_idempotent_mutation(
+                idempotency_context,
+            )
             if self.pending_name_exists(
                 shopping_session_id=item.shopping_session_id,
                 name=item.name,
@@ -148,6 +162,7 @@ class GroceryItemRepository:
                 actor_user_id=actor_user_id,
                 event_type=GroceryActivityType.ITEM_EDITED,
             )
+            self._complete_idempotent_mutation(idempotency_record, item)
             self.db.commit()
         except IntegrityError as error:
             self.db.rollback()
@@ -169,10 +184,14 @@ class GroceryItemRepository:
         household_id: UUID,
         completed_by_user_id: UUID,
         completed_at: datetime | None = None,
+        idempotency_context: GroceryMutationIdempotencyContext | None = None,
     ) -> GroceryItem:
         self._committed_activity_event = None
         effective_completed_at = completed_at or datetime.now(UTC)
         try:
+            idempotency_record = self._begin_idempotent_mutation(
+                idempotency_context,
+            )
             result = self.db.execute(
                 update(GroceryItem)
                 .where(
@@ -198,6 +217,9 @@ class GroceryItemRepository:
                     actor_user_id=completed_by_user_id,
                     event_type=GroceryActivityType.ITEM_COMPLETED,
                 )
+                self.db.flush()
+                self.db.refresh(item)
+                self._complete_idempotent_mutation(idempotency_record, item)
                 self.db.commit()
             except Exception:
                 self.db.rollback()
@@ -219,9 +241,13 @@ class GroceryItemRepository:
         *,
         household_id: UUID,
         actor_user_id: UUID,
+        idempotency_context: GroceryMutationIdempotencyContext | None = None,
     ) -> GroceryItem:
         self._committed_activity_event = None
         try:
+            idempotency_record = self._begin_idempotent_mutation(
+                idempotency_context,
+            )
             if self.pending_name_exists(
                 shopping_session_id=item.shopping_session_id,
                 name=item.name,
@@ -259,6 +285,9 @@ class GroceryItemRepository:
                     actor_user_id=actor_user_id,
                     event_type=GroceryActivityType.ITEM_REOPENED,
                 )
+                self.db.flush()
+                self.db.refresh(item)
+                self._complete_idempotent_mutation(idempotency_record, item)
                 self.db.commit()
             except Exception:
                 self.db.rollback()
@@ -280,15 +309,23 @@ class GroceryItemRepository:
         *,
         household_id: UUID,
         actor_user_id: UUID,
+        idempotency_context: GroceryMutationIdempotencyContext | None = None,
     ) -> None:
         self._committed_activity_event = None
         try:
+            idempotency_record = self._begin_idempotent_mutation(
+                idempotency_context,
+            )
             activity_event = self._add_activity_event(
                 household_id=household_id,
                 item=item,
                 actor_user_id=actor_user_id,
                 event_type=GroceryActivityType.ITEM_DELETED,
             )
+            if idempotency_record is not None:
+                GroceryMutationIdempotencyRepository(
+                    self.db,
+                ).complete_without_body(idempotency_record)
             self.db.delete(item)
             self.db.commit()
         except Exception:
@@ -341,6 +378,28 @@ class GroceryItemRepository:
         )
         self.db.add(activity_event)
         return activity_event
+
+    def _begin_idempotent_mutation(
+        self,
+        context: GroceryMutationIdempotencyContext | None,
+    ) -> GroceryMutationIdempotency | None:
+        if context is None:
+            return None
+        return GroceryMutationIdempotencyRepository(self.db).begin(context)
+
+    def _complete_idempotent_mutation(
+        self,
+        record: GroceryMutationIdempotency | None,
+        item: GroceryItem,
+    ) -> None:
+        if record is None:
+            return
+        self.db.flush()
+        self.db.refresh(item)
+        GroceryMutationIdempotencyRepository(self.db).complete_with_item(
+            record,
+            item,
+        )
 
 
 class GroceryItemTransitionError(ValueError):

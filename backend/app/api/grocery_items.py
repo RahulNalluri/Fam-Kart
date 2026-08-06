@@ -5,6 +5,7 @@ from fastapi import (
     APIRouter,
     BackgroundTasks,
     Depends,
+    Header,
     HTTPException,
     Query,
     Response,
@@ -16,9 +17,15 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import get_current_user
 from app.core.redis import get_redis
 from app.db.session import get_db
+from app.models.grocery_mutation_idempotency import GroceryMutationIdempotency
 from app.models.user import User
 from app.repositories.grocery_activity_events import GroceryActivityEventRepository
 from app.repositories.grocery_items import GroceryItemRepository
+from app.repositories.grocery_mutation_idempotency import (
+    DuplicateGroceryMutationIdempotencyError,
+    GroceryMutationIdempotencyContext,
+    GroceryMutationIdempotencyRepository,
+)
 from app.repositories.household_members import HouseholdMemberRepository
 from app.repositories.shopping_sessions import ShoppingSessionRepository
 from app.schemas.grocery_activity_events import GroceryActivityEventResponse
@@ -42,6 +49,12 @@ from app.services.grocery_items import (
     reopen_grocery_item,
     update_grocery_item,
 )
+from app.services.grocery_mutation_idempotency import (
+    GroceryMutationIdempotencyConflictError,
+    GroceryMutationOperation,
+    build_grocery_mutation_idempotency_context,
+    validate_grocery_mutation_replay,
+)
 from app.services.realtime_events import build_realtime_event
 from app.services.realtime_publisher import try_publish_realtime_event
 
@@ -49,6 +62,109 @@ router = APIRouter(
     prefix=("/api/v1/households/{household_id}/shopping-sessions/{session_id}/items"),
     tags=["grocery items"],
 )
+
+IDEMPOTENCY_CONFLICT_DETAIL = (
+    "This idempotency key was already used for a different grocery change."
+)
+
+
+def _prepare_idempotent_mutation(
+    *,
+    mutation_id: UUID | None,
+    user_id: UUID,
+    household_id: UUID,
+    session_id: UUID,
+    operation: GroceryMutationOperation,
+    response_status: int,
+    item_id: UUID | None,
+    payload: dict[str, object],
+    db: Session,
+) -> tuple[
+    GroceryMutationIdempotencyContext | None,
+    GroceryMutationIdempotency | None,
+]:
+    if mutation_id is None:
+        return None, None
+
+    context = build_grocery_mutation_idempotency_context(
+        mutation_id=mutation_id,
+        user_id=user_id,
+        household_id=household_id,
+        shopping_session_id=session_id,
+        operation=operation,
+        response_status=response_status,
+        item_id=item_id,
+        payload=payload,
+    )
+    record = GroceryMutationIdempotencyRepository(db).get(mutation_id)
+    if record is not None:
+        _validate_replay(record, context)
+        _validate_replay_access(
+            db=db,
+            user_id=user_id,
+            household_id=household_id,
+            session_id=session_id,
+        )
+    return context, record
+
+
+def _validate_replay(
+    record: GroceryMutationIdempotency,
+    context: GroceryMutationIdempotencyContext,
+) -> None:
+    try:
+        validate_grocery_mutation_replay(record, context)
+    except GroceryMutationIdempotencyConflictError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=IDEMPOTENCY_CONFLICT_DETAIL,
+        ) from error
+
+
+def _validate_replay_access(
+    *,
+    db: Session,
+    user_id: UUID,
+    household_id: UUID,
+    session_id: UUID,
+) -> None:
+    membership = HouseholdMemberRepository(db).get_for_user_and_household(
+        user_id=user_id,
+        household_id=household_id,
+    )
+    shopping_session = ShoppingSessionRepository(db).get_for_household(
+        session_id=session_id,
+        household_id=household_id,
+    )
+    if membership is None or shopping_session is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                "This shopping session could not be found or you do not have "
+                "access to it."
+            ),
+        )
+
+
+def _load_concurrent_replay(
+    db: Session,
+    context: GroceryMutationIdempotencyContext | None,
+) -> GroceryMutationIdempotency:
+    if context is None:
+        raise RuntimeError("An idempotency conflict requires a mutation context.")
+    record = GroceryMutationIdempotencyRepository(db).get(context.mutation_id)
+    if record is None:
+        raise RuntimeError("The committed idempotency result could not be loaded.")
+    _validate_replay(record, context)
+    return record
+
+
+def _replay_item_response(
+    record: GroceryMutationIdempotency,
+) -> GroceryItemResponse:
+    if record.response_body is None:
+        raise RuntimeError("The stored grocery mutation response is missing.")
+    return GroceryItemResponse.model_validate(record.response_body)
 
 
 def _schedule_committed_realtime_event(
@@ -77,7 +193,25 @@ def create_current_session_grocery_item(
     db: Annotated[Session, Depends(get_db)],
     redis_client: Annotated[Redis, Depends(get_redis)],
     background_tasks: BackgroundTasks,
+    idempotency_key: Annotated[
+        UUID | None,
+        Header(alias="Idempotency-Key"),
+    ] = None,
 ) -> GroceryItemResponse:
+    idempotency_context, replay = _prepare_idempotent_mutation(
+        mutation_id=idempotency_key,
+        user_id=current_user.id,
+        household_id=household_id,
+        session_id=session_id,
+        operation=GroceryMutationOperation.ADD,
+        response_status=status.HTTP_201_CREATED,
+        item_id=None,
+        payload=data.model_dump(mode="json"),
+        db=db,
+    )
+    if replay is not None:
+        return _replay_item_response(replay)
+
     item_repository = GroceryItemRepository(db)
     try:
         item = create_grocery_item(
@@ -88,6 +222,11 @@ def create_current_session_grocery_item(
             item_repository,
             ShoppingSessionRepository(db),
             HouseholdMemberRepository(db),
+            idempotency_context=idempotency_context,
+        )
+    except DuplicateGroceryMutationIdempotencyError:
+        return _replay_item_response(
+            _load_concurrent_replay(db, idempotency_context),
         )
     except GroceryItemShoppingSessionNotFoundError as error:
         raise HTTPException(
@@ -191,7 +330,25 @@ def update_current_session_grocery_item(
     db: Annotated[Session, Depends(get_db)],
     redis_client: Annotated[Redis, Depends(get_redis)],
     background_tasks: BackgroundTasks,
+    idempotency_key: Annotated[
+        UUID | None,
+        Header(alias="Idempotency-Key"),
+    ] = None,
 ) -> GroceryItemResponse:
+    idempotency_context, replay = _prepare_idempotent_mutation(
+        mutation_id=idempotency_key,
+        user_id=current_user.id,
+        household_id=household_id,
+        session_id=session_id,
+        operation=GroceryMutationOperation.EDIT,
+        response_status=status.HTTP_200_OK,
+        item_id=item_id,
+        payload=data.model_dump(mode="json", exclude_unset=True),
+        db=db,
+    )
+    if replay is not None:
+        return _replay_item_response(replay)
+
     item_repository = GroceryItemRepository(db)
     try:
         item = update_grocery_item(
@@ -203,6 +360,11 @@ def update_current_session_grocery_item(
             item_repository,
             ShoppingSessionRepository(db),
             HouseholdMemberRepository(db),
+            idempotency_context=idempotency_context,
+        )
+    except DuplicateGroceryMutationIdempotencyError:
+        return _replay_item_response(
+            _load_concurrent_replay(db, idempotency_context),
         )
     except GroceryItemNotFoundError as error:
         raise HTTPException(
@@ -252,7 +414,25 @@ def complete_current_session_grocery_item(
     db: Annotated[Session, Depends(get_db)],
     redis_client: Annotated[Redis, Depends(get_redis)],
     background_tasks: BackgroundTasks,
+    idempotency_key: Annotated[
+        UUID | None,
+        Header(alias="Idempotency-Key"),
+    ] = None,
 ) -> GroceryItemResponse:
+    idempotency_context, replay = _prepare_idempotent_mutation(
+        mutation_id=idempotency_key,
+        user_id=current_user.id,
+        household_id=household_id,
+        session_id=session_id,
+        operation=GroceryMutationOperation.COMPLETE,
+        response_status=status.HTTP_200_OK,
+        item_id=item_id,
+        payload={},
+        db=db,
+    )
+    if replay is not None:
+        return _replay_item_response(replay)
+
     item_repository = GroceryItemRepository(db)
     try:
         item = complete_grocery_item(
@@ -263,6 +443,11 @@ def complete_current_session_grocery_item(
             item_repository,
             ShoppingSessionRepository(db),
             HouseholdMemberRepository(db),
+            idempotency_context=idempotency_context,
+        )
+    except DuplicateGroceryMutationIdempotencyError:
+        return _replay_item_response(
+            _load_concurrent_replay(db, idempotency_context),
         )
     except GroceryItemNotFoundError as error:
         raise HTTPException(
@@ -298,7 +483,25 @@ def reopen_current_session_grocery_item(
     db: Annotated[Session, Depends(get_db)],
     redis_client: Annotated[Redis, Depends(get_redis)],
     background_tasks: BackgroundTasks,
+    idempotency_key: Annotated[
+        UUID | None,
+        Header(alias="Idempotency-Key"),
+    ] = None,
 ) -> GroceryItemResponse:
+    idempotency_context, replay = _prepare_idempotent_mutation(
+        mutation_id=idempotency_key,
+        user_id=current_user.id,
+        household_id=household_id,
+        session_id=session_id,
+        operation=GroceryMutationOperation.REOPEN,
+        response_status=status.HTTP_200_OK,
+        item_id=item_id,
+        payload={},
+        db=db,
+    )
+    if replay is not None:
+        return _replay_item_response(replay)
+
     item_repository = GroceryItemRepository(db)
     try:
         item = reopen_grocery_item(
@@ -309,6 +512,11 @@ def reopen_current_session_grocery_item(
             item_repository,
             ShoppingSessionRepository(db),
             HouseholdMemberRepository(db),
+            idempotency_context=idempotency_context,
+        )
+    except DuplicateGroceryMutationIdempotencyError:
+        return _replay_item_response(
+            _load_concurrent_replay(db, idempotency_context),
         )
     except GroceryItemNotFoundError as error:
         raise HTTPException(
@@ -349,7 +557,25 @@ def delete_current_session_grocery_item(
     db: Annotated[Session, Depends(get_db)],
     redis_client: Annotated[Redis, Depends(get_redis)],
     background_tasks: BackgroundTasks,
+    idempotency_key: Annotated[
+        UUID | None,
+        Header(alias="Idempotency-Key"),
+    ] = None,
 ) -> Response:
+    idempotency_context, replay = _prepare_idempotent_mutation(
+        mutation_id=idempotency_key,
+        user_id=current_user.id,
+        household_id=household_id,
+        session_id=session_id,
+        operation=GroceryMutationOperation.DELETE,
+        response_status=status.HTTP_204_NO_CONTENT,
+        item_id=item_id,
+        payload={},
+        db=db,
+    )
+    if replay is not None:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
     item_repository = GroceryItemRepository(db)
     try:
         delete_grocery_item(
@@ -360,7 +586,11 @@ def delete_current_session_grocery_item(
             item_repository,
             ShoppingSessionRepository(db),
             HouseholdMemberRepository(db),
+            idempotency_context=idempotency_context,
         )
+    except DuplicateGroceryMutationIdempotencyError:
+        _load_concurrent_replay(db, idempotency_context)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
     except GroceryItemNotFoundError as error:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

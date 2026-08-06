@@ -740,6 +740,27 @@ This module manages queue persistence and state only. Mutation compaction, netwo
 replay, backend idempotency/version enforcement, optimistic cache overlays, and
 user-facing conflict review remain separate Phase 10 work.
 
+### Backend Grocery Idempotency
+
+All five grocery mutation endpoints now accept an optional UUID in the
+`Idempotency-Key` header. The backend stores a SHA-256 fingerprint and the successful
+response before committing the grocery item and its activity event. Retrying the
+same key, authenticated user, household, session, operation, item, and payload
+returns the stored response without repeating PostgreSQL changes or Redis
+publication. Existing clients may omit the header and keep their previous behavior.
+
+Idempotency ownership, scope, operation, payload fingerprint, response status, and
+response body are committed atomically in PostgreSQL. A concurrent duplicate loses
+the primary-key race and replays the winner after its transaction rolls back. Reusing
+a key for different mutation data returns an understandable `409` without exposing
+the original request. Delete retries retain their successful `204` result after the
+grocery row is gone.
+
+Records currently follow household, session, and account cascade cleanup. A bounded
+retention task can be added with scheduled production maintenance later. Version
+preconditions for stale offline edits and mobile queue replay remain separate Phase
+10 modules.
+
 ## Quick Start
 
 PowerShell:

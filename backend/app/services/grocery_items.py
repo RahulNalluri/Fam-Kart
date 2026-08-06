@@ -10,6 +10,9 @@ from app.repositories.grocery_items import (
     DuplicatePendingGroceryItemError,
     GroceryItemRepository,
 )
+from app.repositories.grocery_mutation_idempotency import (
+    GroceryMutationIdempotencyContext,
+)
 from app.repositories.household_members import HouseholdMemberRepository
 from app.repositories.shopping_sessions import ShoppingSessionRepository
 from app.schemas.grocery_items import CreateGroceryItemRequest, UpdateGroceryItemRequest
@@ -47,6 +50,8 @@ def create_grocery_item(
     item_repository: GroceryItemRepository,
     session_repository: ShoppingSessionRepository,
     member_repository: HouseholdMemberRepository,
+    *,
+    idempotency_context: GroceryMutationIdempotencyContext | None = None,
 ) -> GroceryItem:
     user_ids = {user.id}
     if data.assigned_to_user_id is not None:
@@ -74,6 +79,17 @@ def create_grocery_item(
         raise GroceryItemShoppingSessionCompletedError
 
     try:
+        if idempotency_context is None:
+            return item_repository.create(
+                household_id=household_id,
+                shopping_session_id=shopping_session.id,
+                name=data.name,
+                quantity=data.quantity,
+                unit=data.unit,
+                notes=data.notes,
+                created_by_user_id=user.id,
+                assigned_to_user_id=data.assigned_to_user_id,
+            )
         return item_repository.create(
             household_id=household_id,
             shopping_session_id=shopping_session.id,
@@ -83,6 +99,7 @@ def create_grocery_item(
             notes=data.notes,
             created_by_user_id=user.id,
             assigned_to_user_id=data.assigned_to_user_id,
+            idempotency_context=idempotency_context,
         )
     except DuplicatePendingGroceryItemError as error:
         raise GroceryItemDuplicateError from error
@@ -122,6 +139,8 @@ def update_grocery_item(
     item_repository: GroceryItemRepository,
     session_repository: ShoppingSessionRepository,
     member_repository: HouseholdMemberRepository,
+    *,
+    idempotency_context: GroceryMutationIdempotencyContext | None = None,
 ) -> GroceryItem:
     memberships = member_repository.lock_for_users(
         household_id=household_id,
@@ -162,10 +181,17 @@ def update_grocery_item(
         setattr(item, field, value)
 
     try:
+        if idempotency_context is None:
+            return item_repository.update(
+                item,
+                household_id=household_id,
+                actor_user_id=user.id,
+            )
         return item_repository.update(
             item,
             household_id=household_id,
             actor_user_id=user.id,
+            idempotency_context=idempotency_context,
         )
     except DuplicatePendingGroceryItemError as error:
         raise GroceryItemDuplicateError from error
@@ -215,6 +241,7 @@ def complete_grocery_item(
     member_repository: HouseholdMemberRepository,
     *,
     completed_at: datetime | None = None,
+    idempotency_context: GroceryMutationIdempotencyContext | None = None,
 ) -> GroceryItem:
     item = _get_item_for_active_session(
         household_id,
@@ -225,11 +252,19 @@ def complete_grocery_item(
         session_repository,
         member_repository,
     )
+    if idempotency_context is None:
+        return item_repository.complete(
+            item,
+            household_id=household_id,
+            completed_by_user_id=user.id,
+            completed_at=completed_at,
+        )
     return item_repository.complete(
         item,
         household_id=household_id,
         completed_by_user_id=user.id,
         completed_at=completed_at,
+        idempotency_context=idempotency_context,
     )
 
 
@@ -241,6 +276,8 @@ def reopen_grocery_item(
     item_repository: GroceryItemRepository,
     session_repository: ShoppingSessionRepository,
     member_repository: HouseholdMemberRepository,
+    *,
+    idempotency_context: GroceryMutationIdempotencyContext | None = None,
 ) -> GroceryItem:
     item = _get_item_for_active_session(
         household_id,
@@ -252,10 +289,17 @@ def reopen_grocery_item(
         member_repository,
     )
     try:
+        if idempotency_context is None:
+            return item_repository.reopen(
+                item,
+                household_id=household_id,
+                actor_user_id=user.id,
+            )
         return item_repository.reopen(
             item,
             household_id=household_id,
             actor_user_id=user.id,
+            idempotency_context=idempotency_context,
         )
     except DuplicatePendingGroceryItemError as error:
         raise GroceryItemDuplicateError from error
@@ -269,6 +313,8 @@ def delete_grocery_item(
     item_repository: GroceryItemRepository,
     session_repository: ShoppingSessionRepository,
     member_repository: HouseholdMemberRepository,
+    *,
+    idempotency_context: GroceryMutationIdempotencyContext | None = None,
 ) -> None:
     item = _get_item_for_active_session(
         household_id,
@@ -282,10 +328,18 @@ def delete_grocery_item(
     if item.status != GroceryItemStatus.PENDING:
         raise GroceryItemCompletedError
 
+    if idempotency_context is None:
+        item_repository.delete(
+            item,
+            household_id=household_id,
+            actor_user_id=user.id,
+        )
+        return
     item_repository.delete(
         item,
         household_id=household_id,
         actor_user_id=user.id,
+        idempotency_context=idempotency_context,
     )
 
 
