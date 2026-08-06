@@ -1,7 +1,12 @@
 import { openDatabaseAsync } from "expo-sqlite";
 
+import {
+  CURRENT_LOCAL_DATABASE_VERSION,
+  getPendingLocalDatabaseMigrations,
+} from "./localDatabaseMigrations";
+
 export const LOCAL_DATABASE_NAME = "familykart.db";
-export const LOCAL_DATABASE_VERSION = 1;
+export const LOCAL_DATABASE_VERSION = CURRENT_LOCAL_DATABASE_VERSION;
 
 type LocalDatabaseTransaction = Readonly<{
   execAsync(source: string): Promise<void>;
@@ -20,14 +25,6 @@ type OpenDatabase = (databaseName: string) => Promise<LocalDatabaseConnection>;
 type UserVersionRow = Readonly<{
   user_version: number;
 }>;
-
-const CREATE_FOUNDATION_SCHEMA = `
-  CREATE TABLE IF NOT EXISTS local_database_metadata (
-    key TEXT PRIMARY KEY NOT NULL,
-    value TEXT NOT NULL
-  );
-  PRAGMA user_version = ${LOCAL_DATABASE_VERSION};
-`;
 
 let localDatabasePromise: Promise<LocalDatabaseConnection> | null = null;
 
@@ -52,7 +49,10 @@ export async function initializeLocalDatabase(
   }
 
   await database.withExclusiveTransactionAsync(async (transaction) => {
-    await transaction.execAsync(CREATE_FOUNDATION_SCHEMA);
+    for (const migration of getPendingLocalDatabaseMigrations(currentVersion)) {
+      await transaction.execAsync(migration.sql);
+      await transaction.execAsync(`PRAGMA user_version = ${migration.version};`);
+    }
   });
 }
 

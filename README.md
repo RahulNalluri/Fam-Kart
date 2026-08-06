@@ -666,6 +666,25 @@ source of truth, while this SQLite database exists only on one mobile device. Ca
 grocery tables, pending mutations, replay processing, and conflict screens remain
 separate Phase 10 modules.
 
+### Local Database Schema and Migrations
+
+The local database now has ordered, transactional migrations through schema version 2. New installations run every migration in sequence, while existing version-1
+installations apply only the new schema. The initializer refuses newer unsupported
+versions and advances SQLite's `user_version` only inside the same exclusive
+transaction as each schema change.
+
+Version 2 adds cached shopping-session and grocery-item tables that mirror the
+backend's identifiers, statuses, values, and timestamps. Household/session indexes
+support later list reads, and deleting a cached session removes only its cached
+items. It also adds a durable pending-mutation table with unique mutation IDs, JSON
+payload validation, base server timestamps, retry counts, review status, and indexes
+that preserve household FIFO replay order. The queue deliberately has no foreign key
+to cache tables, so a cache refresh cannot erase unsynchronized user work.
+
+This module defines storage and migration rules only. Repositories for reading and
+writing cached groceries, queue compaction and replay, connectivity detection, and
+conflict presentation are not implemented yet.
+
 ## Quick Start
 
 PowerShell:

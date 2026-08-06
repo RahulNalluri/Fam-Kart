@@ -46,7 +46,7 @@ function buildDatabase(currentVersion: number | null): DatabaseHarness {
 }
 
 describe("Expo SQLite foundation", () => {
-  it.each([null, 0])("creates the first schema from version %s", async (version) => {
+  it.each([null, 0])("migrates a new database from version %s", async (version) => {
     const harness = buildDatabase(version);
 
     await initializeLocalDatabase(harness.database);
@@ -55,11 +55,25 @@ describe("Expo SQLite foundation", () => {
       "PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;",
     );
     expect(harness.withExclusiveTransactionAsync).toHaveBeenCalledTimes(1);
-    expect(harness.transactionExecAsync).toHaveBeenCalledWith(
-      expect.stringContaining("CREATE TABLE IF NOT EXISTS local_database_metadata"),
-    );
-    expect(harness.transactionExecAsync).toHaveBeenCalledWith(
-      expect.stringContaining(`PRAGMA user_version = ${LOCAL_DATABASE_VERSION}`),
+    expect(harness.transactionExecAsync.mock.calls).toEqual([
+      [expect.stringContaining("CREATE TABLE local_database_metadata")],
+      ["PRAGMA user_version = 1;"],
+      [expect.stringContaining("CREATE TABLE cached_grocery_items")],
+      [`PRAGMA user_version = ${LOCAL_DATABASE_VERSION};`],
+    ]);
+  });
+
+  it("upgrades an existing foundation database without rerunning version 1", async () => {
+    const harness = buildDatabase(1);
+
+    await initializeLocalDatabase(harness.database);
+
+    expect(harness.transactionExecAsync.mock.calls).toEqual([
+      [expect.stringContaining("CREATE TABLE cached_shopping_sessions")],
+      [`PRAGMA user_version = ${LOCAL_DATABASE_VERSION};`],
+    ]);
+    expect(harness.transactionExecAsync).not.toHaveBeenCalledWith(
+      expect.stringContaining("CREATE TABLE local_database_metadata"),
     );
   });
 
