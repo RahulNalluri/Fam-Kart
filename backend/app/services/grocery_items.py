@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID
 
 from app.models.grocery_activity_event import GroceryActivityEvent
@@ -11,7 +11,9 @@ from app.repositories.grocery_items import (
     GroceryItemRepository,
 )
 from app.repositories.grocery_mutation_idempotency import (
+    DuplicateGroceryMutationIdempotencyError,
     GroceryMutationIdempotencyContext,
+    GroceryMutationIdempotencyRepository,
 )
 from app.repositories.household_members import HouseholdMemberRepository
 from app.repositories.shopping_sessions import ShoppingSessionRepository
@@ -40,6 +42,36 @@ class GroceryItemCompletedError(ValueError):
 
 class GroceryItemDuplicateError(ValueError):
     pass
+
+
+class GroceryItemVersionConflictError(ValueError):
+    pass
+
+
+def _normalized_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def _ensure_item_version(
+    item: GroceryItem,
+    expected_updated_at: datetime | None,
+    item_repository: GroceryItemRepository,
+    idempotency_context: GroceryMutationIdempotencyContext | None,
+) -> None:
+    if expected_updated_at is None:
+        return
+    if _normalized_utc(item.updated_at) != _normalized_utc(expected_updated_at):
+        if (
+            idempotency_context is not None
+            and GroceryMutationIdempotencyRepository(item_repository.db).get(
+                idempotency_context.mutation_id,
+            )
+            is not None
+        ):
+            raise DuplicateGroceryMutationIdempotencyError
+        raise GroceryItemVersionConflictError
 
 
 def create_grocery_item(
@@ -140,6 +172,7 @@ def update_grocery_item(
     session_repository: ShoppingSessionRepository,
     member_repository: HouseholdMemberRepository,
     *,
+    expected_updated_at: datetime | None = None,
     idempotency_context: GroceryMutationIdempotencyContext | None = None,
 ) -> GroceryItem:
     memberships = member_repository.lock_for_users(
@@ -164,6 +197,12 @@ def update_grocery_item(
     )
     if item is None:
         raise GroceryItemNotFoundError
+    _ensure_item_version(
+        item,
+        expected_updated_at,
+        item_repository,
+        idempotency_context,
+    )
     if item.status != GroceryItemStatus.PENDING:
         raise GroceryItemCompletedError
 
@@ -205,6 +244,8 @@ def _get_item_for_active_session(
     item_repository: GroceryItemRepository,
     session_repository: ShoppingSessionRepository,
     member_repository: HouseholdMemberRepository,
+    expected_updated_at: datetime | None = None,
+    idempotency_context: GroceryMutationIdempotencyContext | None = None,
 ) -> GroceryItem:
     memberships = member_repository.lock_for_users(
         household_id=household_id,
@@ -228,6 +269,12 @@ def _get_item_for_active_session(
     )
     if item is None:
         raise GroceryItemNotFoundError
+    _ensure_item_version(
+        item,
+        expected_updated_at,
+        item_repository,
+        idempotency_context,
+    )
     return item
 
 
@@ -241,6 +288,7 @@ def complete_grocery_item(
     member_repository: HouseholdMemberRepository,
     *,
     completed_at: datetime | None = None,
+    expected_updated_at: datetime | None = None,
     idempotency_context: GroceryMutationIdempotencyContext | None = None,
 ) -> GroceryItem:
     item = _get_item_for_active_session(
@@ -251,6 +299,8 @@ def complete_grocery_item(
         item_repository,
         session_repository,
         member_repository,
+        expected_updated_at,
+        idempotency_context,
     )
     if idempotency_context is None:
         return item_repository.complete(
@@ -277,6 +327,7 @@ def reopen_grocery_item(
     session_repository: ShoppingSessionRepository,
     member_repository: HouseholdMemberRepository,
     *,
+    expected_updated_at: datetime | None = None,
     idempotency_context: GroceryMutationIdempotencyContext | None = None,
 ) -> GroceryItem:
     item = _get_item_for_active_session(
@@ -287,6 +338,8 @@ def reopen_grocery_item(
         item_repository,
         session_repository,
         member_repository,
+        expected_updated_at,
+        idempotency_context,
     )
     try:
         if idempotency_context is None:
@@ -314,6 +367,7 @@ def delete_grocery_item(
     session_repository: ShoppingSessionRepository,
     member_repository: HouseholdMemberRepository,
     *,
+    expected_updated_at: datetime | None = None,
     idempotency_context: GroceryMutationIdempotencyContext | None = None,
 ) -> None:
     item = _get_item_for_active_session(
@@ -324,6 +378,8 @@ def delete_grocery_item(
         item_repository,
         session_repository,
         member_repository,
+        expected_updated_at,
+        idempotency_context,
     )
     if item.status != GroceryItemStatus.PENDING:
         raise GroceryItemCompletedError

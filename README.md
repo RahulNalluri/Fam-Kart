@@ -644,12 +644,10 @@ refresh server state, validation failures are rejected, and version or duplicate
 conflicts require user review instead of silently overwriting another family
 member's work. A delete is considered successful when the item is already absent.
 
-The current backend exposes grocery `updated_at` timestamps but does not yet enforce
-version preconditions or accept idempotency keys. Those backend contracts must be
-implemented before a persistent mutation queue can safely replay writes. This module
-therefore defines and tests policy only; Expo SQLite storage, optimistic updates,
-queue processing, connectivity detection, and user-facing conflict screens are not
-implemented yet.
+The backend exposes grocery `updated_at` timestamps, while version preconditions and
+idempotency are implemented in later Phase 10 modules. This module therefore defines
+and tests policy only; Expo SQLite storage, optimistic updates, queue processing,
+connectivity detection, and user-facing conflict screens are documented separately.
 
 ### Expo SQLite Foundation
 
@@ -794,9 +792,31 @@ Stopping removes the connectivity listener and prevents late asynchronous result
 from changing state.
 
 The coordinator accepts a replay runner interface and does not inspect or transmit
-queued payloads itself. Actual grocery HTTP replay, backend version preconditions,
-connectivity lifecycle mounting, and localized status presentation remain separate
-Phase 10 modules.
+queued payloads itself. Actual grocery HTTP replay, connectivity lifecycle mounting,
+and localized status presentation remain separate Phase 10 modules.
+
+### Server Reconciliation and Conflict Handling
+
+Grocery edit, complete, reopen, and delete endpoints now accept an optional
+`X-Base-Updated-At` header. When supplied, its timestamp is compared with the current
+item `updated_at` value while the shopping session and grocery item rows are locked.
+A stale request receives `412 Precondition Failed` with a controlled refresh-and-review
+message and creates no item change, activity event, or real-time publication. Existing
+online clients may omit the header, while offline replay must send its stored base
+timestamp.
+
+The base version is part of the idempotency fingerprint. A retry with the same key,
+payload, and base version replays the committed response even though the item version
+has advanced; changing the base version while reusing that key is rejected. This
+preserves both optimistic concurrency and retry safety.
+
+On mobile, deterministic reconciliation maps successful responses, already-applied
+deletes, temporary failures, authentication pauses, inaccessible resources, stale
+versions, and invalid mutations to queue actions. Authoritative grocery state is
+refreshed before acknowledged or discarded work is removed. Conflicts and invalid
+mutations move to `requires_review`, while temporary failures remain queued with an
+incremented retry count. The HTTP queue replay loop and user-facing conflict review
+screen remain separate Phase 10 modules.
 
 ## Quick Start
 

@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -41,6 +42,7 @@ from app.services.grocery_items import (
     GroceryItemNotFoundError,
     GroceryItemShoppingSessionCompletedError,
     GroceryItemShoppingSessionNotFoundError,
+    GroceryItemVersionConflictError,
     complete_grocery_item,
     create_grocery_item,
     delete_grocery_item,
@@ -66,6 +68,29 @@ router = APIRouter(
 IDEMPOTENCY_CONFLICT_DETAIL = (
     "This idempotency key was already used for a different grocery change."
 )
+VERSION_CONFLICT_DETAIL = (
+    "This grocery item was changed by another household member. Refresh the list "
+    "and review your change."
+)
+
+
+def _versioned_idempotency_payload(
+    payload: dict[str, object],
+    base_updated_at: datetime | None,
+) -> dict[str, object]:
+    if base_updated_at is None:
+        return payload
+    return {
+        **payload,
+        "_base_updated_at": base_updated_at.isoformat(),
+    }
+
+
+def _raise_version_conflict(error: GroceryItemVersionConflictError) -> None:
+    raise HTTPException(
+        status_code=status.HTTP_412_PRECONDITION_FAILED,
+        detail=VERSION_CONFLICT_DETAIL,
+    ) from error
 
 
 def _prepare_idempotent_mutation(
@@ -334,6 +359,10 @@ def update_current_session_grocery_item(
         UUID | None,
         Header(alias="Idempotency-Key"),
     ] = None,
+    base_updated_at: Annotated[
+        datetime | None,
+        Header(alias="X-Base-Updated-At"),
+    ] = None,
 ) -> GroceryItemResponse:
     idempotency_context, replay = _prepare_idempotent_mutation(
         mutation_id=idempotency_key,
@@ -343,7 +372,10 @@ def update_current_session_grocery_item(
         operation=GroceryMutationOperation.EDIT,
         response_status=status.HTTP_200_OK,
         item_id=item_id,
-        payload=data.model_dump(mode="json", exclude_unset=True),
+        payload=_versioned_idempotency_payload(
+            data.model_dump(mode="json", exclude_unset=True),
+            base_updated_at,
+        ),
         db=db,
     )
     if replay is not None:
@@ -360,6 +392,7 @@ def update_current_session_grocery_item(
             item_repository,
             ShoppingSessionRepository(db),
             HouseholdMemberRepository(db),
+            expected_updated_at=base_updated_at,
             idempotency_context=idempotency_context,
         )
     except DuplicateGroceryMutationIdempotencyError:
@@ -397,6 +430,8 @@ def update_current_session_grocery_item(
             status_code=status.HTTP_409_CONFLICT,
             detail="This item is already pending in this shopping session.",
         ) from error
+    except GroceryItemVersionConflictError as error:
+        _raise_version_conflict(error)
     _schedule_committed_realtime_event(
         background_tasks,
         redis_client,
@@ -418,6 +453,10 @@ def complete_current_session_grocery_item(
         UUID | None,
         Header(alias="Idempotency-Key"),
     ] = None,
+    base_updated_at: Annotated[
+        datetime | None,
+        Header(alias="X-Base-Updated-At"),
+    ] = None,
 ) -> GroceryItemResponse:
     idempotency_context, replay = _prepare_idempotent_mutation(
         mutation_id=idempotency_key,
@@ -427,7 +466,7 @@ def complete_current_session_grocery_item(
         operation=GroceryMutationOperation.COMPLETE,
         response_status=status.HTTP_200_OK,
         item_id=item_id,
-        payload={},
+        payload=_versioned_idempotency_payload({}, base_updated_at),
         db=db,
     )
     if replay is not None:
@@ -443,6 +482,7 @@ def complete_current_session_grocery_item(
             item_repository,
             ShoppingSessionRepository(db),
             HouseholdMemberRepository(db),
+            expected_updated_at=base_updated_at,
             idempotency_context=idempotency_context,
         )
     except DuplicateGroceryMutationIdempotencyError:
@@ -465,6 +505,8 @@ def complete_current_session_grocery_item(
                 "already completed."
             ),
         ) from error
+    except GroceryItemVersionConflictError as error:
+        _raise_version_conflict(error)
 
     _schedule_committed_realtime_event(
         background_tasks,
@@ -487,6 +529,10 @@ def reopen_current_session_grocery_item(
         UUID | None,
         Header(alias="Idempotency-Key"),
     ] = None,
+    base_updated_at: Annotated[
+        datetime | None,
+        Header(alias="X-Base-Updated-At"),
+    ] = None,
 ) -> GroceryItemResponse:
     idempotency_context, replay = _prepare_idempotent_mutation(
         mutation_id=idempotency_key,
@@ -496,7 +542,7 @@ def reopen_current_session_grocery_item(
         operation=GroceryMutationOperation.REOPEN,
         response_status=status.HTTP_200_OK,
         item_id=item_id,
-        payload={},
+        payload=_versioned_idempotency_payload({}, base_updated_at),
         db=db,
     )
     if replay is not None:
@@ -512,6 +558,7 @@ def reopen_current_session_grocery_item(
             item_repository,
             ShoppingSessionRepository(db),
             HouseholdMemberRepository(db),
+            expected_updated_at=base_updated_at,
             idempotency_context=idempotency_context,
         )
     except DuplicateGroceryMutationIdempotencyError:
@@ -539,6 +586,8 @@ def reopen_current_session_grocery_item(
             status_code=status.HTTP_409_CONFLICT,
             detail="This item is already pending in this shopping session.",
         ) from error
+    except GroceryItemVersionConflictError as error:
+        _raise_version_conflict(error)
 
     _schedule_committed_realtime_event(
         background_tasks,
@@ -561,6 +610,10 @@ def delete_current_session_grocery_item(
         UUID | None,
         Header(alias="Idempotency-Key"),
     ] = None,
+    base_updated_at: Annotated[
+        datetime | None,
+        Header(alias="X-Base-Updated-At"),
+    ] = None,
 ) -> Response:
     idempotency_context, replay = _prepare_idempotent_mutation(
         mutation_id=idempotency_key,
@@ -570,7 +623,7 @@ def delete_current_session_grocery_item(
         operation=GroceryMutationOperation.DELETE,
         response_status=status.HTTP_204_NO_CONTENT,
         item_id=item_id,
-        payload={},
+        payload=_versioned_idempotency_payload({}, base_updated_at),
         db=db,
     )
     if replay is not None:
@@ -586,6 +639,7 @@ def delete_current_session_grocery_item(
             item_repository,
             ShoppingSessionRepository(db),
             HouseholdMemberRepository(db),
+            expected_updated_at=base_updated_at,
             idempotency_context=idempotency_context,
         )
     except DuplicateGroceryMutationIdempotencyError:
@@ -612,6 +666,8 @@ def delete_current_session_grocery_item(
             status_code=status.HTTP_409_CONFLICT,
             detail="Reopen this grocery item before deleting it.",
         ) from error
+    except GroceryItemVersionConflictError as error:
+        _raise_version_conflict(error)
 
     _schedule_committed_realtime_event(
         background_tasks,

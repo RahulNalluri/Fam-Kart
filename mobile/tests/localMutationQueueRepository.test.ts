@@ -212,4 +212,18 @@ describe("LocalMutationQueueRepository", () => {
       $householdId: householdId,
     });
   });
+
+  it("removes deliberately discarded stale work in its household", async () => {
+    const harness = buildHarness();
+
+    await harness.repository.removeDiscarded(householdId, mutationId);
+
+    expect(harness.runAsync.mock.calls[0][0]).toContain(
+      "DELETE FROM pending_grocery_mutations",
+    );
+    expect(harness.runAsync.mock.calls[0][1]).toEqual({
+      $mutationId: mutationId,
+      $householdId: householdId,
+    });
+  });
 });

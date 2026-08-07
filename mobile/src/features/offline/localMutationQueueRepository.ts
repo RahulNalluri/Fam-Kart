@@ -185,4 +185,12 @@ export class LocalMutationQueueRepository {
       { $mutationId: mutationId, $householdId: householdId },
     );
   }
+
+  async removeDiscarded(householdId: string, mutationId: string): Promise<void> {
+    await this.database.runAsync(
+      `DELETE FROM pending_grocery_mutations
+       WHERE mutation_id = $mutationId AND household_id = $householdId;`,
+      { $mutationId: mutationId, $householdId: householdId },
+    );
+  }
 }
