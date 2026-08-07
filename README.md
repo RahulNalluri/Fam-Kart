@@ -761,6 +761,23 @@ retention task can be added with scheduled production maintenance later. Version
 preconditions for stale offline edits and mobile queue replay remain separate Phase
 10 modules.
 
+### Optimistic Grocery Updates
+
+Mobile grocery add, edit, complete, reopen, and delete actions can now update their
+household and shopping-session React Query caches immediately. Optimistic records
+carry the same client mutation ID intended for SQLite queue entries and backend
+idempotency headers, expose a pending synchronization marker, and preserve decimal
+quantities as strings. Completing and reopening items also preserve the list's
+pending-first ordering.
+
+Successful requests replace temporary values with the authoritative server item,
+including replacing a temporary add ID with the server-generated ID. Failed requests
+can restore the previous list and item detail. Rollback and confirmation refuse to
+overwrite the cache after a newer server refresh or real-time update has replaced the
+optimistic result. This module provides cache operations only; grocery API mutation
+hooks, offline replay, connectivity monitoring, and conflict presentation remain
+separate Phase 10 work.
+
 ## Quick Start
 
 PowerShell:
