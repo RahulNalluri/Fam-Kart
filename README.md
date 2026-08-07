@@ -818,6 +818,23 @@ mutations move to `requires_review`, while temporary failures remain queued with
 incremented retry count. The HTTP queue replay loop and user-facing conflict review
 screen remain separate Phase 10 modules.
 
+### App Lifecycle Recovery
+
+A household-scoped mobile lifecycle hook now starts offline synchronization only
+while React Native reports the app as active. Entering an inactive or background
+state stops the coordinator and its connectivity listener. Returning to the
+foreground starts it again, causing a fresh connectivity check and a safe queued-work
+recovery attempt. Repeated state notifications are ignored, so an
+`inactive`-to-`background` transition does not stop twice and duplicate `active`
+events do not create overlapping replay runs.
+
+The hook replaces the coordinator when the selected household changes, removes both
+AppState and coordinator listeners during cleanup, and ignores late asynchronous
+results from an obsolete lifecycle. Its controlled snapshot can later drive a
+localized synchronization status component without exposing technical errors. The
+hook is not mounted in the temporary home route because authenticated household state
+and the HTTP queue replay runner are not available there yet.
+
 ## Quick Start
 
 PowerShell:
