@@ -778,6 +778,26 @@ optimistic result. This module provides cache operations only; grocery API mutat
 hooks, offline replay, connectivity monitoring, and conflict presentation remain
 separate Phase 10 work.
 
+### Connectivity and Sync Coordinator
+
+The mobile app now classifies Expo Network state as online, offline, or unknown and
+observes changes through a removable native listener. An active connection requires
+an attached network that is not known to lack internet access; unavailable and
+indeterminate states never start queued synchronization.
+
+A household-scoped coordinator starts synchronization after an online launch or an
+offline-to-online transition. It serializes replay requests, coalesces repeated
+triggers, and performs one follow-up run when new work arrives during an active run.
+Observable states distinguish connection waiting, active synchronization, temporary
+retry waiting, authentication pause, conflict review, and controlled internal errors.
+Stopping removes the connectivity listener and prevents late asynchronous results
+from changing state.
+
+The coordinator accepts a replay runner interface and does not inspect or transmit
+queued payloads itself. Actual grocery HTTP replay, backend version preconditions,
+connectivity lifecycle mounting, and localized status presentation remain separate
+Phase 10 modules.
+
 ## Quick Start
 
 PowerShell:
