@@ -909,12 +909,31 @@ resolution requests, and remains disabled without a selected household. The pane
 controller are ready for the authenticated grocery route, but are not mounted in the
 temporary unauthenticated home screen.
 
+### End-to-End Offline UI Workflow Tests
+
+A rendered mobile integration suite now exercises the complete available offline UI
+boundary. It verifies that a cached grocery list appears without connectivity, an
+offline edit updates React Query immediately, reconnection sends the production
+idempotency and base-version headers, authoritative data replaces the pending value,
+and another household's queue remains untouched.
+
+The suite also drives a real `412` reconciliation into the localized conflict panel,
+confirms newer family data is visible without exposing the HTTP code, and presses
+**Keep family version** through the production review controller. A background test
+proves that reconnecting does not replay until the app returns to the foreground.
+
+These are rendered Jest integration tests using a test-only grocery screen and
+deterministic network, SQLite, app-state, and server boundaries. They are not Maestro
+device tests and do not claim to validate navigation, native SQLite, or a real Android
+process. Device-level end-to-end coverage becomes possible after authenticated mobile
+navigation and the production grocery screen are implemented.
+
 ### Final Phase 10 Validation
 
 The Phase 10 offline synchronization foundation has passed its final automated
 validation. Backend formatting, linting, strict type checking, 849 default tests,
 and all 5 Redis integration tests pass. Mobile formatting, linting, strict TypeScript
-checking, and all 388 Jest tests pass. Docker Compose is valid; the backend,
+checking, and all 391 Jest tests pass. Docker Compose is valid; the backend,
 PostgreSQL, and Redis services are healthy; PostgreSQL is at Alembic head
 `20260807_0010`; the live health endpoint returns the expected response; and Expo
 reports that its installed dependencies match SDK 54.
