@@ -28,6 +28,37 @@ export const teluguTranslations = {
     connectionInterrupted:
       "తక్షణ కనెక్షన్‌కు అంతరాయం ఏర్పడింది. మళ్లీ కనెక్ట్ అవుతోంది.",
   },
+  offline: {
+    conflicts: {
+      title: "పరిశీలించాల్సిన మార్పులు",
+      count_one: "{{count}} మార్పు",
+      count_other: "{{count}} మార్పులు",
+      loading: "మార్పులను లోడ్ చేస్తోంది...",
+      empty: "పరిశీలించాల్సిన మార్పులు లేవు.",
+      itemFallback: "సరుకు",
+      summary: "{{operation}}: {{item}}",
+      operations: {
+        add: "జోడించు",
+        edit: "మార్చు",
+        complete: "పూర్తి చేయు",
+        reopen: "మళ్లీ తెరువు",
+        delete: "తొలగించు",
+      },
+      quantity: "పరిమాణం: {{value}}",
+      unit: "యూనిట్: {{value}}",
+      reasons: {
+        serverConflict:
+          "మీరు ఆఫ్‌లైన్‌లో ఉన్నప్పుడు కుటుంబ సభ్యుడు ఈ సరుకును మార్చారు.",
+        invalidMutation: "ఈ ఆఫ్‌లైన్ మార్పు ఇక చెల్లదు.",
+        reviewRequired: "ఈ ఆఫ్‌లైన్ మార్పును మీరు పరిశీలించాలి.",
+      },
+      keepFamilyVersion: "కుటుంబ వెర్షన్‌ను ఉంచు",
+      reviewChange: "మార్పును పరిశీలించు",
+      resolving: "పరిష్కరిస్తోంది...",
+      loadFailed: "పరిశీలించాల్సిన మార్పులను లోడ్ చేయలేకపోయాము.",
+      resolveFailed: "ఈ మార్పును పరిష్కరించలేకపోయాము. మళ్లీ ప్రయత్నించండి.",
+    },
+  },
   voice: {
     permission: {
       title: "మైక్రోఫోన్ అనుమతి",

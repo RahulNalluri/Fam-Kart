@@ -24,6 +24,36 @@ export type TranslationResources = {
     serviceUnavailable: string;
     connectionInterrupted: string;
   };
+  offline: {
+    conflicts: {
+      title: string;
+      count_one: string;
+      count_other: string;
+      loading: string;
+      empty: string;
+      itemFallback: string;
+      summary: string;
+      operations: {
+        add: string;
+        edit: string;
+        complete: string;
+        reopen: string;
+        delete: string;
+      };
+      quantity: string;
+      unit: string;
+      reasons: {
+        serverConflict: string;
+        invalidMutation: string;
+        reviewRequired: string;
+      };
+      keepFamilyVersion: string;
+      reviewChange: string;
+      resolving: string;
+      loadFailed: string;
+      resolveFailed: string;
+    };
+  };
   voice: {
     permission: {
       title: string;

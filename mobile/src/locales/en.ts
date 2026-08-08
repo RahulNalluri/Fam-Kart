@@ -26,6 +26,36 @@ export const englishTranslations = {
     serviceUnavailable: "Real-time updates are temporarily unavailable. Reconnecting.",
     connectionInterrupted: "The real-time connection was interrupted. Reconnecting.",
   },
+  offline: {
+    conflicts: {
+      title: "Changes to review",
+      count_one: "{{count}} change",
+      count_other: "{{count}} changes",
+      loading: "Loading changes...",
+      empty: "No changes need review.",
+      itemFallback: "Grocery item",
+      summary: "{{operation}}: {{item}}",
+      operations: {
+        add: "Add",
+        edit: "Edit",
+        complete: "Complete",
+        reopen: "Reopen",
+        delete: "Delete",
+      },
+      quantity: "Quantity: {{value}}",
+      unit: "Unit: {{value}}",
+      reasons: {
+        serverConflict: "A family member changed this item while you were offline.",
+        invalidMutation: "This offline change is no longer valid.",
+        reviewRequired: "This offline change needs your review.",
+      },
+      keepFamilyVersion: "Keep family version",
+      reviewChange: "Review change",
+      resolving: "Resolving...",
+      loadFailed: "Changes needing review could not be loaded.",
+      resolveFailed: "This change could not be resolved. Please try again.",
+    },
+  },
   voice: {
     permission: {
       title: "Microphone permission",

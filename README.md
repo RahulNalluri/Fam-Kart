@@ -889,12 +889,32 @@ store, shopping-session route, or grocery-list screen. The boundary therefore is
 mounted in `app/index.tsx` with fake account data; the real authenticated grocery
 screen will call it when those navigation and session modules are implemented.
 
+### Conflict Review Interface
+
+Reviewed offline mutations can now be listed from SQLite in household-scoped FIFO
+order and presented through an accessible English/Telugu conflict panel. The panel
+shows a localized operation, safe grocery name, known quantity and unit, and a
+controlled explanation. It never renders mutation UUIDs, raw server error codes,
+unknown payload fields, access tokens, or technical exception details.
+
+Choosing **Keep family version** refreshes the exact authoritative shopping-session
+query before deleting only the matching `requires_review` row. If refresh or removal
+fails, the local change remains available and the panel shows controlled feedback.
+Choosing **Review change** passes the mutation to the future grocery editor so the
+member can reapply it deliberately against current family data. The interface does not
+offer blind retry because the unchanged stale base version would conflict again.
+
+The controller ignores late results after household changes, blocks duplicate
+resolution requests, and remains disabled without a selected household. The panel and
+controller are ready for the authenticated grocery route, but are not mounted in the
+temporary unauthenticated home screen.
+
 ### Final Phase 10 Validation
 
 The Phase 10 offline synchronization foundation has passed its final automated
 validation. Backend formatting, linting, strict type checking, 849 default tests,
 and all 5 Redis integration tests pass. Mobile formatting, linting, strict TypeScript
-checking, and all 368 Jest tests pass. Docker Compose is valid; the backend,
+checking, and all 388 Jest tests pass. Docker Compose is valid; the backend,
 PostgreSQL, and Redis services are healthy; PostgreSQL is at Alembic head
 `20260807_0010`; the live health endpoint returns the expected response; and Expo
 reports that its installed dependencies match SDK 54.
@@ -907,8 +927,8 @@ reconciliation, conflict review state, foreground recovery, and household isolat
 Phase 10 is not yet a user-operable end-to-end mobile feature. The production replay
 runner and authenticated screen boundary are implemented, but the application still
 needs authenticated navigation and grocery routes before that boundary can be mounted
-with real account state. A user-facing conflict review screen also remains to be
-connected. The current workflow tests use deterministic in-memory server and queue
+with real account state. The conflict review controller and panel are also ready for
+that route. The current workflow tests use deterministic in-memory server and queue
 boundaries to validate the orchestration until those route-level integrations exist.
 
 ## Quick Start

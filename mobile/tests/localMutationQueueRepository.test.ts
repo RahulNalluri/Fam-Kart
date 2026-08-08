@@ -129,6 +129,43 @@ describe("LocalMutationQueueRepository", () => {
     expect(harness.getAllAsync).not.toHaveBeenCalled();
   });
 
+  it("lists only household mutations requiring review in FIFO order", async () => {
+    const harness = buildHarness();
+    harness.getAllAsync.mockResolvedValueOnce([
+      { ...mutationRow, status: "requires_review", last_error_code: "server_conflict" },
+    ]);
+
+    await expect(
+      harness.repository.listRequiresReview(householdId, 20),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        mutationId,
+        householdId,
+        status: "requires_review",
+        lastErrorCode: "server_conflict",
+      }),
+    ]);
+    expect(harness.getAllAsync.mock.calls[0][0]).toContain(
+      "status = 'requires_review'",
+    );
+    expect(harness.getAllAsync.mock.calls[0][0]).toContain(
+      "ORDER BY created_at ASC, mutation_id ASC",
+    );
+    expect(harness.getAllAsync.mock.calls[0][1]).toEqual({
+      $householdId: householdId,
+      $limit: 20,
+    });
+  });
+
+  it.each([0, 101, 1.5])("rejects invalid conflict-review limit %s", async (limit) => {
+    const harness = buildHarness();
+
+    await expect(
+      harness.repository.listRequiresReview(householdId, limit),
+    ).rejects.toThrow("must be between 1 and 100");
+    expect(harness.getAllAsync).not.toHaveBeenCalled();
+  });
+
   it("returns a household-scoped mutation by ID", async () => {
     const harness = buildHarness();
     harness.getFirstAsync.mockResolvedValueOnce(mutationRow);
@@ -221,6 +258,21 @@ describe("LocalMutationQueueRepository", () => {
     expect(harness.runAsync.mock.calls[0][0]).toContain(
       "DELETE FROM pending_grocery_mutations",
     );
+    expect(harness.runAsync.mock.calls[0][1]).toEqual({
+      $mutationId: mutationId,
+      $householdId: householdId,
+    });
+  });
+
+  it("resolves only reviewed work for the selected household", async () => {
+    const harness = buildHarness();
+
+    await harness.repository.resolveReviewByKeepingServerVersion(
+      householdId,
+      mutationId,
+    );
+
+    expect(harness.runAsync.mock.calls[0][0]).toContain("status = 'requires_review'");
     expect(harness.runAsync.mock.calls[0][1]).toEqual({
       $mutationId: mutationId,
       $householdId: householdId,

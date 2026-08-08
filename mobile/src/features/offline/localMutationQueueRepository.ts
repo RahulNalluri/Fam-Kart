@@ -127,6 +127,22 @@ export class LocalMutationQueueRepository {
     return rows.map(mapMutation);
   }
 
+  async listRequiresReview(
+    householdId: string,
+    limit: number = DEFAULT_REPLAY_LIMIT,
+  ): Promise<QueuedOfflineMutation[]> {
+    validateReplayLimit(limit);
+    const rows = await this.database.getAllAsync<QueuedOfflineMutationRow>(
+      `SELECT ${SELECT_MUTATION_COLUMNS}
+       FROM pending_grocery_mutations
+       WHERE household_id = $householdId AND status = 'requires_review'
+       ORDER BY created_at ASC, mutation_id ASC
+       LIMIT $limit;`,
+      { $householdId: householdId, $limit: limit },
+    );
+    return rows.map(mapMutation);
+  }
+
   async getMutation(
     householdId: string,
     mutationId: string,
@@ -190,6 +206,19 @@ export class LocalMutationQueueRepository {
     await this.database.runAsync(
       `DELETE FROM pending_grocery_mutations
        WHERE mutation_id = $mutationId AND household_id = $householdId;`,
+      { $mutationId: mutationId, $householdId: householdId },
+    );
+  }
+
+  async resolveReviewByKeepingServerVersion(
+    householdId: string,
+    mutationId: string,
+  ): Promise<void> {
+    await this.database.runAsync(
+      `DELETE FROM pending_grocery_mutations
+       WHERE mutation_id = $mutationId
+         AND household_id = $householdId
+         AND status = 'requires_review';`,
       { $mutationId: mutationId, $householdId: householdId },
     );
   }
