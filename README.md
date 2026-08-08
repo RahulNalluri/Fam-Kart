@@ -869,12 +869,32 @@ to the coordinator instead of being incorrectly recorded as connectivity failure
 Non-add work missing its required base version is never transmitted and instead moves
 to review, preventing an invalid local record from overwriting newer family data.
 
+### Authenticated Grocery Synchronization Boundary
+
+The mobile app now has a screen-level hook that accepts the authenticated access
+token, selected household, and selected shopping session. It opens and migrates the
+shared Expo SQLite database, creates the local cache and mutation-queue repositories,
+hydrates the selected React Query grocery list, and only then mounts the production
+queue runner through the household foreground/background coordinator.
+
+The runner reads the latest access token through a ref, so token rotation does not
+reopen SQLite or rebuild local repositories. Reconciliation invalidates the exact
+household/session query, changing scope stops the previous coordinator before
+rehydrating the new list, and missing authenticated context keeps local storage and
+synchronization disabled. Initialization failures return controlled state to the
+screen while technical details are available only through an explicit error callback.
+
+The repository still has no authenticated mobile navigation, selected-household
+store, shopping-session route, or grocery-list screen. The boundary therefore is not
+mounted in `app/index.tsx` with fake account data; the real authenticated grocery
+screen will call it when those navigation and session modules are implemented.
+
 ### Final Phase 10 Validation
 
 The Phase 10 offline synchronization foundation has passed its final automated
 validation. Backend formatting, linting, strict type checking, 849 default tests,
 and all 5 Redis integration tests pass. Mobile formatting, linting, strict TypeScript
-checking, and all 361 Jest tests pass. Docker Compose is valid; the backend,
+checking, and all 368 Jest tests pass. Docker Compose is valid; the backend,
 PostgreSQL, and Redis services are healthy; PostgreSQL is at Alembic head
 `20260807_0010`; the live health endpoint returns the expected response; and Expo
 reports that its installed dependencies match SDK 54.
@@ -885,9 +905,10 @@ preconditions, connectivity-triggered synchronization, deterministic server
 reconciliation, conflict review state, foreground recovery, and household isolation.
 
 Phase 10 is not yet a user-operable end-to-end mobile feature. The production replay
-runner is implemented, but the lifecycle hook and runner must still be mounted in the
-authenticated grocery screen. A user-facing conflict review screen also remains to
-be connected. The current workflow tests use deterministic in-memory server and queue
+runner and authenticated screen boundary are implemented, but the application still
+needs authenticated navigation and grocery routes before that boundary can be mounted
+with real account state. A user-facing conflict review screen also remains to be
+connected. The current workflow tests use deterministic in-memory server and queue
 boundaries to validate the orchestration until those route-level integrations exist.
 
 ## Quick Start
