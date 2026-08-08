@@ -18,6 +18,12 @@
           "recordAudioAndroid": true
         }
       ],
+      [
+        "expo-notifications",
+        {
+          "defaultChannel": "familykart-updates"
+        }
+      ],
       "expo-sqlite"
     ],
     "experiments": {

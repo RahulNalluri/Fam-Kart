@@ -950,6 +950,19 @@ with real account state. The conflict review controller and panel are also ready
 that route. The current workflow tests use deterministic in-memory server and queue
 boundaries to validate the orchestration until those route-level integrations exist.
 
+### Expo Notifications Foundation and Permissions
+
+Phase 11 begins with the Expo Notifications native dependency and configuration for
+the shared `familykart-updates` Android channel. A platform-independent permission
+contract classifies notification access as granted, requestable, or blocked, while
+the Expo adapter handles Android channel creation and iOS alert, badge, and sound
+permission options. Checking the current state never opens a system prompt;
+permission is requested only through an explicit action intended for a future screen.
+
+This foundation does not yet obtain or upload device push tokens, send or receive
+notifications, store notification preferences, or add backend notification records.
+Those responsibilities remain separate Phase 11 modules.
+
 ## Quick Start
 
 PowerShell:
