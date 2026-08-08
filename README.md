@@ -963,6 +963,26 @@ This foundation does not yet obtain or upload device push tokens, send or receiv
 notifications, store notification preferences, or add backend notification records.
 Those responsibilities remain separate Phase 11 modules.
 
+### Device Push-Token Management
+
+Authenticated users can now register and deactivate the current app installation at
+`/api/v1/users/me/push-devices`. The backend stores one active Expo push token per
+installation, supports token rotation through an idempotent update, prevents an
+active installation from being claimed by another account with different token
+credentials, and permits account changes after deactivation. Device-removal requests
+are user-scoped and idempotent so they do not reveal another user's registration.
+
+The mobile manager creates a stable random installation ID in Expo SecureStore,
+checks notification permission, obtains an Expo push token for a physical Android or
+iOS device, and sends the validated registration with bearer authentication. It can
+also deactivate the stored installation during a future logout workflow. Token
+acquisition requires a configured EAS project ID and a development or production
+build; Android Expo Go cannot provide remote push notifications on SDK 54.
+
+Registration is not invoked automatically yet because the production authentication
+screens and explicit notification opt-in control are not mounted. This module does
+not send notifications or store notification preferences.
+
 ## Quick Start
 
 PowerShell:

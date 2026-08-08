@@ -10,6 +10,7 @@ from app.db.base import Base
 if TYPE_CHECKING:
     from app.models.auth_session import AuthSession
     from app.models.household_member import HouseholdMember
+    from app.models.push_device import PushDevice
 
 
 class User(Base):
@@ -38,6 +39,10 @@ class User(Base):
         cascade="all, delete-orphan",
     )
     auth_sessions: Mapped[list["AuthSession"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    push_devices: Mapped[list["PushDevice"]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
     )

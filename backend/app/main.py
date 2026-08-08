@@ -10,6 +10,7 @@ from app.api.grocery_parsing import router as grocery_parsing_router
 from app.api.health import router as health_router
 from app.api.household_grocery_aliases import router as household_grocery_aliases_router
 from app.api.households import router as households_router
+from app.api.push_devices import router as push_devices_router
 from app.api.realtime import router as realtime_router
 from app.api.shopping_sessions import router as shopping_sessions_router
 from app.api.users import router as users_router
@@ -74,6 +75,7 @@ def create_app() -> FastAPI:
     app.include_router(shopping_sessions_router)
     app.include_router(grocery_parsing_router)
     app.include_router(grocery_items_router)
+    app.include_router(push_devices_router)
     app.include_router(realtime_router)
     app.include_router(users_router)
     return app

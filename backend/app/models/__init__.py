@@ -6,6 +6,7 @@ from app.models.household import Household
 from app.models.household_grocery_alias import HouseholdGroceryAlias
 from app.models.household_invitation import HouseholdInvitation
 from app.models.household_member import HouseholdMember, HouseholdRole
+from app.models.push_device import PushDevice, PushPlatform
 from app.models.shopping_session import ShoppingSession, ShoppingSessionStatus
 from app.models.user import User
 
@@ -21,6 +22,8 @@ __all__ = [
     "HouseholdInvitation",
     "HouseholdMember",
     "HouseholdRole",
+    "PushDevice",
+    "PushPlatform",
     "ShoppingSession",
     "ShoppingSessionStatus",
     "User",
