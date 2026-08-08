@@ -833,7 +833,7 @@ AppState and coordinator listeners during cleanup, and ignores late asynchronous
 results from an obsolete lifecycle. Its controlled snapshot can later drive a
 localized synchronization status component without exposing technical errors. The
 hook is not mounted in the temporary home route because authenticated household state
-and the HTTP queue replay runner are not available there yet.
+is not available there yet.
 
 ### Offline Workflow Tests
 
@@ -846,16 +846,35 @@ replaces the optimistic value and acknowledged work leaves the queue.
 The workflow suite also verifies stale server versions move mutations to
 `requires_review` while displaying a newer family member's data, temporary failures
 remain queued until foreground lifecycle recovery, and one household's synchronization
-cannot consume or replace another household's queue or cache. Server responses and
-queue persistence are deterministic in-memory boundaries; the production HTTP replay
-loop remains a separate implementation module.
+cannot consume or replace another household's queue or cache. That cross-module suite
+uses deterministic in-memory server and queue boundaries, while the production HTTP
+runner has focused request and failure-policy coverage below.
+
+### Production Offline Queue Replay Runner
+
+The mobile app now has a production runner that reads up to 100 pending mutations for
+one household in SQLite FIFO order and sends them sequentially through the shared
+Axios client. Add, edit, complete, reopen, and delete operations map to their actual
+grocery endpoints. Every request includes the current bearer token and the durable
+client mutation ID as `Idempotency-Key`; versioned non-add operations also send their
+stored `X-Base-Updated-At` value.
+
+Each response passes through the existing reconciliation policy. Acknowledged and
+deliberately discarded work is removed only after authoritative grocery state
+refreshes successfully. Temporary failures remain queued, authentication failures
+pause replay, and conflicts move the current mutation to `requires_review`. Replay
+stops at the first blocking result so later FIFO work cannot overtake it. Network
+errors expose no server body or access token, and unexpected client failures surface
+to the coordinator instead of being incorrectly recorded as connectivity failures.
+Non-add work missing its required base version is never transmitted and instead moves
+to review, preventing an invalid local record from overwriting newer family data.
 
 ### Final Phase 10 Validation
 
 The Phase 10 offline synchronization foundation has passed its final automated
 validation. Backend formatting, linting, strict type checking, 849 default tests,
 and all 5 Redis integration tests pass. Mobile formatting, linting, strict TypeScript
-checking, and all 341 Jest tests pass. Docker Compose is valid; the backend,
+checking, and all 361 Jest tests pass. Docker Compose is valid; the backend,
 PostgreSQL, and Redis services are healthy; PostgreSQL is at Alembic head
 `20260807_0010`; the live health endpoint returns the expected response; and Expo
 reports that its installed dependencies match SDK 54.
@@ -865,13 +884,11 @@ mutation queues, optimistic grocery changes, backend idempotency and version
 preconditions, connectivity-triggered synchronization, deterministic server
 reconciliation, conflict review state, foreground recovery, and household isolation.
 
-Phase 10 is not yet a user-operable end-to-end mobile feature. The production HTTP
-queue replay runner still needs to call the grocery mutation endpoints with
-`Idempotency-Key` and `X-Base-Updated-At`, and the lifecycle hook must be mounted in
-the authenticated grocery screen. A user-facing conflict review screen also remains
-to be connected. The current workflow tests use deterministic in-memory server and
-queue boundaries to validate the orchestration until those route-level integrations
-exist.
+Phase 10 is not yet a user-operable end-to-end mobile feature. The production replay
+runner is implemented, but the lifecycle hook and runner must still be mounted in the
+authenticated grocery screen. A user-facing conflict review screen also remains to
+be connected. The current workflow tests use deterministic in-memory server and queue
+boundaries to validate the orchestration until those route-level integrations exist.
 
 ## Quick Start
 
